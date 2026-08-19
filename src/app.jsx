@@ -365,7 +365,7 @@ const completeProfile = {
         { merge: true }
       );
 
-      const completeProfile = { ...profile, id: credential.user.uid };
+   
 
       localStorage.setItem(INSTALLATION_COMPLETE_KEY, 'true');
       localStorage.setItem('schoolApp_profile', JSON.stringify(completeProfile));
