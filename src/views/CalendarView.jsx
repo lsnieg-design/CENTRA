@@ -1281,13 +1281,13 @@ export function CalendarView({
             <div className="flex bg-slate-100 rounded-xl p-1">
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setViewMode('week');
                   localStorage.setItem(
                     'centra_calendar_view',
                     'week'
-                  )
-                }
+                  );
+                }}
                 className={`px-3 py-2 rounded-lg text-xs font-bold ${
                   viewMode ===
                   'week'
@@ -1300,13 +1300,13 @@ export function CalendarView({
 
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setViewMode('month');
                   localStorage.setItem(
                     'centra_calendar_view',
                     'month'
-                  )
-                }
+                  );
+                }}
                 className={`px-3 py-2 rounded-lg text-xs font-bold ${
                   viewMode ===
                   'month'
