@@ -12,6 +12,7 @@ import { COLLECTIONS } from '../data/collections';
 // -------------------------------------------------------------
 // FUNCIONES AUXILIARES DE FECHAS Y EDAD (SANEAMIENTO)
 // -------------------------------------------------------------
+
 const calculateAge = (d) => { 
   if (!d) return '-'; 
   const t = new Date(); 
