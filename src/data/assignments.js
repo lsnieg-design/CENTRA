@@ -1,5 +1,4 @@
 import {
-  collection,
   query,
   where,
   getDocs
@@ -15,9 +14,7 @@ import {
 import { COLLECTIONS } from './collections';
 
 const todayISO = () =>
-  new Date()
-    .toISOString()
-    .slice(0, 10);
+  new Date().toISOString().slice(0, 10);
 
 export const ASSIGNMENT_STATUS = {
   ACTIVE: 'active',
@@ -33,31 +30,23 @@ export async function getStudentGroupAssignments(
   appId,
   studentId
 ) {
-  const ref =
-    publicCollectionRef(
-      db,
-      appId,
-      COLLECTIONS.STUDENT_GROUP_ASSIGNMENTS
-    );
-
-  const snapshot =
-    await getDocs(
-      query(
-        ref,
-        where(
-          'studentId',
-          '==',
-          studentId
-        )
-      )
-    );
-
-  return snapshot.docs.map(
-    doc => ({
-      id: doc.id,
-      ...doc.data()
-    })
+  const ref = publicCollectionRef(
+    db,
+    appId,
+    COLLECTIONS.STUDENT_GROUP_ASSIGNMENTS
   );
+
+  const snapshot = await getDocs(
+    query(
+      ref,
+      where('studentId', '==', studentId)
+    )
+  );
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 }
 
 export async function getActiveStudentGroupAssignment(
@@ -75,11 +64,34 @@ export async function getActiveStudentGroupAssignment(
   return (
     assignments.find(
       item =>
-        item.status ===
-          ASSIGNMENT_STATUS.ACTIVE &&
+        item.status === ASSIGNMENT_STATUS.ACTIVE &&
         !item.validTo
     ) || null
   );
+}
+
+export async function getStudentGroupAssignmentsForGroup(
+  db,
+  appId,
+  groupId
+) {
+  const ref = publicCollectionRef(
+    db,
+    appId,
+    COLLECTIONS.STUDENT_GROUP_ASSIGNMENTS
+  );
+
+  const snapshot = await getDocs(
+    query(
+      ref,
+      where('groupId', '==', groupId)
+    )
+  );
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 }
 
 export async function createStudentGroupAssignment(
@@ -87,10 +99,7 @@ export async function createStudentGroupAssignment(
   appId,
   data
 ) {
-  if (
-    !data.studentId ||
-    !data.groupId
-  ) {
+  if (!data.studentId || !data.groupId) {
     throw new Error(
       'La asignación necesita estudiante y grupo.'
     );
@@ -101,30 +110,22 @@ export async function createStudentGroupAssignment(
     appId,
     COLLECTIONS.STUDENT_GROUP_ASSIGNMENTS,
     {
-      studentId:
-        data.studentId,
+      studentId: data.studentId,
 
-      groupId:
-        data.groupId,
+      groupId: data.groupId,
 
-      turnIds:
-        Array.isArray(
-          data.turnIds
-        )
-          ? data.turnIds
-          : [],
+      turnIds: Array.isArray(data.turnIds)
+        ? data.turnIds
+        : [],
 
       scheduleType:
-        data.scheduleType ||
-        'simple',
+        data.scheduleType || 'simple',
 
       validFrom:
-        data.validFrom ||
-        todayISO(),
+        data.validFrom || todayISO(),
 
       validTo:
-        data.validTo ||
-        null,
+        data.validTo || null,
 
       status:
         data.status ||
@@ -155,8 +156,7 @@ export async function closeStudentGroupAssignment(
         ASSIGNMENT_STATUS.CLOSED,
 
       validTo:
-        validTo ||
-        todayISO(),
+        validTo || todayISO(),
 
       updatedAt:
         new Date().toISOString()
@@ -173,31 +173,23 @@ export async function getStaffGroupAssignments(
   appId,
   staffId
 ) {
-  const ref =
-    publicCollectionRef(
-      db,
-      appId,
-      COLLECTIONS.STAFF_GROUP_ASSIGNMENTS
-    );
-
-  const snapshot =
-    await getDocs(
-      query(
-        ref,
-        where(
-          'staffId',
-          '==',
-          staffId
-        )
-      )
-    );
-
-  return snapshot.docs.map(
-    doc => ({
-      id: doc.id,
-      ...doc.data()
-    })
+  const ref = publicCollectionRef(
+    db,
+    appId,
+    COLLECTIONS.STAFF_GROUP_ASSIGNMENTS
   );
+
+  const snapshot = await getDocs(
+    query(
+      ref,
+      where('staffId', '==', staffId)
+    )
+  );
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 }
 
 export async function getActiveStaffGroupAssignments(
@@ -220,6 +212,30 @@ export async function getActiveStaffGroupAssignments(
   );
 }
 
+export async function getStaffGroupAssignmentsForGroup(
+  db,
+  appId,
+  groupId
+) {
+  const ref = publicCollectionRef(
+    db,
+    appId,
+    COLLECTIONS.STAFF_GROUP_ASSIGNMENTS
+  );
+
+  const snapshot = await getDocs(
+    query(
+      ref,
+      where('groupId', '==', groupId)
+    )
+  );
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
 export async function createStaffGroupAssignment(
   db,
   appId,
@@ -240,29 +256,21 @@ export async function createStaffGroupAssignment(
     appId,
     COLLECTIONS.STAFF_GROUP_ASSIGNMENTS,
     {
-      staffId:
-        data.staffId,
+      staffId: data.staffId,
 
-      groupId:
-        data.groupId,
+      groupId: data.groupId,
 
-      roleId:
-        data.roleId,
+      roleId: data.roleId,
 
-      turnIds:
-        Array.isArray(
-          data.turnIds
-        )
-          ? data.turnIds
-          : [],
+      turnIds: Array.isArray(data.turnIds)
+        ? data.turnIds
+        : [],
 
       validFrom:
-        data.validFrom ||
-        todayISO(),
+        data.validFrom || todayISO(),
 
       validTo:
-        data.validTo ||
-        null,
+        data.validTo || null,
 
       status:
         data.status ||
@@ -293,8 +301,7 @@ export async function closeStaffGroupAssignment(
         ASSIGNMENT_STATUS.CLOSED,
 
       validTo:
-        validTo ||
-        todayISO(),
+        validTo || todayISO(),
 
       updatedAt:
         new Date().toISOString()
