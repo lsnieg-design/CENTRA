@@ -55,9 +55,11 @@ const triggerMobileNotification = (title, body) => {
   }
 };
 
+const FIREBASE_CONFIG_STORAGE_KEY = 'centra_firebase_config';
+
 const getFirebaseConfig = () => {
   try {
-    if (import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY) {
+    if (import.meta.env?.VITE_FIREBASE_API_KEY) {
       return {
         apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
         authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -67,15 +69,36 @@ const getFirebaseConfig = () => {
         appId: import.meta.env.VITE_FIREBASE_APP_ID
       };
     }
-  } catch (e) {
-    console.log("Buscando config global...");
-  }
-  if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config);
-  }
+  } catch {}
+
+  try {
+    const saved = localStorage.getItem(FIREBASE_CONFIG_STORAGE_KEY);
+    if (saved) {
+      const config = JSON.parse(saved);
+      if (config?.apiKey && config?.projectId && config?.appId) {
+        return config;
+      }
+    }
+  } catch {}
+
+  try {
+    if (typeof __firebase_config !== 'undefined') {
+      return JSON.parse(__firebase_config);
+    }
+  } catch {}
+
   return {};
 };
 
+const firebaseConfig = getFirebaseConfig();
+
+const app =
+  Object.keys(firebaseConfig).length > 0
+    ? initializeApp(firebaseConfig)
+    : null;
+
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
 const firebaseConfig = getFirebaseConfig();
 const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
 const auth = app ? getAuth(app) : null;
@@ -127,16 +150,183 @@ function NotificationsView({ notifications }) {
   );
 }
 
+function FirebaseSetupScreen() {
+  const [form, setForm] = useState({
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const update = (key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const save = async () => {
+    setError('');
+
+    const required = [
+      'apiKey',
+      'authDomain',
+      'projectId',
+      'storageBucket',
+      'messagingSenderId',
+      'appId'
+    ];
+
+    const missing = required.filter(key => !form[key].trim());
+
+    if (missing.length) {
+      setError('Completá todos los campos de Firebase.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const testApp = initializeApp(form, `centra-setup-${Date.now()}`);
+
+      // Verificamos que Firebase pueda inicializarse correctamente.
+      getAuth(testApp);
+      getFirestore(testApp);
+
+      localStorage.setItem(
+        FIREBASE_CONFIG_STORAGE_KEY,
+        JSON.stringify(form)
+      );
+
+      window.location.reload();
+
+    } catch (err) {
+      console.error(err);
+      setError(
+        'No se pudo inicializar Firebase. Revisá los datos ingresados.'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+
+        <div className="text-center mb-8">
+          <img
+            src="/icon-192.png"
+            alt="CENTRA"
+            className="w-20 h-20 mx-auto mb-4 rounded-2xl"
+          />
+
+          <h1 className="text-3xl font-black text-slate-900">
+            Configuración inicial
+          </h1>
+
+          <p className="text-slate-500 mt-2">
+            Conectá CENTRA con la base de datos de esta institución.
+          </p>
+        </div>
+
+        <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 mb-6 text-sm text-violet-900">
+          <strong>Primer paso:</strong> copiá los datos de configuración
+          de la aplicación web de Firebase.
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+
+          {[
+            ['apiKey', 'API Key'],
+            ['authDomain', 'Auth Domain'],
+            ['projectId', 'Project ID'],
+            ['storageBucket', 'Storage Bucket'],
+            ['messagingSenderId', 'Messaging Sender ID'],
+            ['appId', 'App ID']
+          ].map(([key, label]) => (
+            <label key={key} className="block">
+              <span className="text-xs font-black uppercase text-slate-500">
+                {label}
+              </span>
+
+              <input
+                value={form[key]}
+                onChange={e => update(key, e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-violet-200"
+                placeholder={label}
+              />
+            </label>
+          ))}
+
+        </div>
+
+        {error && (
+          <div className="mt-5 rounded-xl bg-red-50 border border-red-200 text-red-700 p-4 text-sm font-semibold">
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={save}
+          disabled={saving}
+          className="mt-6 w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-3.5 font-black disabled:opacity-60"
+        >
+          {saving ? 'Conectando…' : 'Conectar CENTRA'}
+        </button>
+
+        <p className="text-xs text-slate-400 text-center mt-5">
+          Esta configuración se guarda únicamente en esta instalación.
+        </p>
+
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [configError, setConfigError] = useState(false);
   const [minTimePassed, setMinTimePassed] = useState(false);
 
   useEffect(() => {
     setTimeout(() => setMinTimePassed(true), 2500);
-    if (!auth) { setConfigError(true); setLoading(false); return; }
+
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+
+          if (userDoc.exists()) {
+            setCurrentUserProfile(userDoc.data());
+          } else {
+            setCurrentUserProfile(null);
+          }
+        } catch (error) {
+          console.error("Error al cargar el perfil:", error);
+          setCurrentUserProfile(null);
+        }
+      } else {
+        setCurrentUserProfile(null);
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // El resto de tu App sigue exactamente igual desde acá...
 
     const initAuth = async () => {
       try {
@@ -162,8 +352,7 @@ export default function App() {
   const handleLogout = () => { setCurrentUserProfile(null); localStorage.removeItem('schoolApp_profile'); };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-violet-50"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-violet-600"></div></div>;
-  if (configError) return <div className="flex flex-col items-center justify-center h-screen bg-red-50 p-6 text-center"><AlertCircle className="text-red-500 w-16 h-16 mb-4" /><h1 className="text-xl font-bold text-red-700">Error de Configuración</h1></div>;
-  if (!currentUserProfile) return <LoginScreen onLogin={handleLogin} />;
+ if (!currentUserProfile) return <LoginScreen onLogin={handleLogin} />;
 
   
  return <MainApp user={currentUserProfile} onLogout={handleLogout} />;
