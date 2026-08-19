@@ -166,7 +166,10 @@ export function CalendarView({
   );
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState(() => localStorage.getItem('centra_calendar_view') || 'month');
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window === 'undefined') return 'month';
+    return localStorage.getItem('centra_calendar_view') || 'month';
+  });
 
   const [selectedDayEvents, setSelectedDayEvents] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -931,162 +934,129 @@ export function CalendarView({
   };
 
   const renderMonthGrid = () => {
-    const year =
-      currentDate.getFullYear();
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
 
-    const month =
-      currentDate.getMonth();
-
-    const firstDay =
-      new Date(
-        year,
-        month,
-        1
-      );
+    const firstDay = new Date(year, month, 1);
 
     const firstDayIndex =
-      firstDay.getDay() ===
-      0
+      firstDay.getDay() === 0
         ? 6
-        : firstDay.getDay() -
-          1;
+        : firstDay.getDay() - 1;
 
     const daysInMonth =
-      new Date(
-        year,
-        month + 1,
-        0
-      ).getDate();
+      new Date(year, month + 1, 0).getDate();
+
+    const totalCells =
+      Math.ceil(
+        (firstDayIndex + daysInMonth) / 7
+      ) * 7;
 
     const cells = [];
 
     for (
-      let i = 0;
-      i < firstDayIndex;
-      i++
+      let cellIndex = 0;
+      cellIndex < totalCells;
+      cellIndex++
     ) {
-      cells.push(
-        <div
-          key={`empty-${i}`}
-          className="bg-slate-50/70 border-b border-r border-slate-100 min-h-[96px] md:min-h-[130px]"
-        />
-      );
-    }
+      const dayNumber =
+        cellIndex - firstDayIndex + 1;
 
-    for (
-      let day = 1;
-      day <= daysInMonth;
-      day++
-    ) {
-      const d =
+      if (
+        dayNumber < 1 ||
+        dayNumber > daysInMonth
+      ) {
+        cells.push(
+          <div
+            key={`empty-${cellIndex}`}
+            className="min-w-0 min-h-0 bg-slate-50/70"
+          />
+        );
+
+        continue;
+      }
+
+      const date =
         new Date(
           year,
           month,
-          day
+          dayNumber
         );
 
       const dateStr =
-        getDateString(
-          d
-        );
+        getDateString(date);
 
       const dayEvents =
-        eventsForDate(
-          dateStr
-        );
+        eventsForDate(dateStr);
 
       const isToday =
-        getDateString(
-          new Date()
-        ) === dateStr;
+        getDateString(new Date()) ===
+        dateStr;
 
       cells.push(
         <button
           key={dateStr}
           type="button"
           onClick={() =>
-            handleDayClick(
-              dateStr
-            )
+            handleDayClick(dateStr)
           }
-          className={`group relative min-w-0 overflow-hidden text-left p-2 transition min-h-[96px] md:min-h-[130px] bg-white hover:bg-violet-50/40 ${
+          className={`group relative min-w-0 min-h-0 overflow-hidden text-left p-2 transition bg-white hover:bg-violet-50/40 ${
             isToday
               ? 'ring-2 ring-inset ring-violet-300 bg-violet-50/50'
               : ''
           }`}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1.5">
             <span
-              className={`text-xs md:text-sm font-black rounded-full w-7 h-7 flex items-center justify-center ${
+              className={`text-xs font-black rounded-full w-7 h-7 flex items-center justify-center ${
                 isToday
                   ? 'bg-violet-600 text-white'
                   : 'text-slate-500'
               }`}
             >
-              {day}
+              {dayNumber}
             </span>
 
-            {dayEvents.length >
-              0 && (
+            {dayEvents.length > 0 && (
               <span className="text-[9px] font-black text-slate-400">
-                {
-                  dayEvents.length
-                }
+                {dayEvents.length}
               </span>
             )}
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1 overflow-hidden">
             {dayEvents
-              .slice(
-                0,
-                4
-              )
-              .map(
-                (
-                  event,
-                  index
-                ) => (
-                  <div
-                    key={`${
-                      event.id ||
-                      event.title
-                    }-${index}`}
-                    className="w-full min-w-0 text-[9px] md:text-[10px] rounded-lg px-2 py-1.5 truncate font-semibold border"
-                    style={getEventStyle(
-                      event.type,
-                      eventTypeById
-                    )}
-                    title={
-                      event.title
-                    }
-                  >
-                    <span className="font-black mr-1">
-                      •
-                    </span>
-                    {
-                      event.title
-                    }
-                  </div>
-                )
-              )}
+              .slice(0, 4)
+              .map((event, index) => (
+                <div
+                  key={`${
+                    event.id ||
+                    event.title
+                  }-${index}`}
+                  className="w-full min-w-0 text-[9px] md:text-[10px] rounded-lg px-2 py-1.5 truncate font-semibold border"
+                  style={getEventStyle(
+                    event.type,
+                    eventTypeById
+                  )}
+                  title={event.title}
+                >
+                  <span className="font-black mr-1">
+                    •
+                  </span>
+                  {event.title}
+                </div>
+              ))}
 
-            {dayEvents.length >
-              4 && (
+            {dayEvents.length > 4 && (
               <span className="text-[9px] font-bold text-violet-600 px-1">
-                +
-                {dayEvents.length -
-                  4}{' '}
-                más
+                +{dayEvents.length - 4} más
               </span>
             )}
           </div>
 
           {canManage && (
             <span className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition text-violet-400">
-              <Plus
-                size={14}
-              />
+              <Plus size={14} />
             </span>
           )}
         </button>
@@ -1212,7 +1182,7 @@ export function CalendarView({
   );
 
   return (
-    <div className="flex flex-col h-full w-full min-w-0 bg-white rounded-3xl border border-slate-200 overflow-hidden animate-in fade-in select-none">
+    <div className="flex flex-col h-full min-h-0 w-full min-w-0 bg-white rounded-3xl border border-slate-200 overflow-hidden animate-in fade-in select-none">
       
       <div className="p-4 border-b border-slate-200 bg-white shrink-0">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1312,7 +1282,9 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() =>
-                  setViewMode(
+                  setViewMode('week');
+                  localStorage.setItem(
+                    'centra_calendar_view',
                     'week'
                   )
                 }
@@ -1329,7 +1301,9 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() =>
-                  setViewMode(
+                  setViewMode('month');
+                  localStorage.setItem(
+                    'centra_calendar_view',
                     'month'
                   )
                 }
@@ -1497,9 +1471,8 @@ export function CalendarView({
           </div>
         )}
 
-      {viewMode ===
-        'month' ? (
-        <>
+      {viewMode === 'month' ? (
+        <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full bg-slate-100/50">
           <div className="w-full min-w-0 grid grid-cols-7 bg-white border-b border-slate-200 shrink-0">
             {[
               'Lun',
@@ -1512,7 +1485,7 @@ export function CalendarView({
             ].map(day => (
               <div
                 key={day}
-                className="min-w-0 py-3 text-center text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest"
+                className="min-w-0 py-2.5 text-center text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest"
               >
                 {day}
               </div>
@@ -1520,44 +1493,25 @@ export function CalendarView({
           </div>
 
           <div
-            className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-100/50 no-scrollbar"
-            onTouchStart={
-              handleTouchStart
-            }
-            onTouchMove={
-              handleTouchMove
-            }
-            onTouchEnd={
-              handleTouchEnd
-            }
-            style={{
-              minHeight:
-                '520px'
-            }}
+            className="flex-1 min-h-0 min-w-0 w-full overflow-hidden"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <div className="w-full min-w-0 grid grid-cols-7 gap-px bg-slate-200">
-              {
-                renderMonthGrid()
-              }
+            <div
+              className="w-full h-full min-h-0 grid grid-cols-7 gap-px bg-slate-200"
+              style={{ gridAutoRows: '1fr' }}
+            >
+              {renderMonthGrid()}
             </div>
           </div>
-        </>
+        </div>
       ) : (
         <div
-          className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-100/50 no-scrollbar"
-          onTouchStart={
-            handleTouchStart
-          }
-          onTouchMove={
-            handleTouchMove
-          }
-          onTouchEnd={
-            handleTouchEnd
-          }
-          style={{
-            minHeight:
-              '520px'
-          }}
+          className="flex-1 min-h-0 min-w-0 w-full overflow-auto bg-slate-100/50"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
           {renderWeekGrid()}
         </div>
