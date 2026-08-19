@@ -33,14 +33,7 @@ import {
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut
-} from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken} from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, query, orderBy, onSnapshot, doc, 
   updateDoc, deleteDoc, where, getDocs, getDoc, setDoc, serverTimestamp, arrayUnion, arrayRemove, limit,increment 
@@ -153,20 +146,6 @@ function NotificationsView({ notifications }) {
   );
 }
 
-
-const INSTALLATION_COMPLETE_KEY = 'centra_installation_complete';
-
-function describeFirebaseError(error) {
-  const code = error?.code || '';
-  if (code.includes('permission-denied')) return 'Firebase está conectado, pero Firestore rechazó el acceso. Revisá las reglas de Firestore.';
-  if (code.includes('auth/operation-not-allowed')) return 'La conexión funciona, pero Email/Password no está habilitado en Firebase Authentication.';
-  if (code.includes('auth/invalid-api-key')) return 'La API Key de Firebase no es válida.';
-  if (code.includes('auth/invalid-project-id')) return 'El Project ID de Firebase no es válido.';
-  if (code.includes('auth/network-request-failed')) return 'No se pudo contactar con Firebase. Revisá la conexión a internet.';
-  if (code.includes('app/invalid-credential')) return 'La configuración de Firebase es inválida.';
-  return error?.message || 'No se pudo completar la operación.';
-}
-
 function FirebaseSetupScreen() {
   const [form, setForm] = useState({
     apiKey: '',
@@ -176,170 +155,54 @@ function FirebaseSetupScreen() {
     messagingSenderId: '',
     appId: ''
   });
-  const [step, setStep] = useState('firebase');
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [status, setStatus] = useState({ type: '', text: '' });
 
-  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
-
-  const validateForm = () => {
-    const required = ['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId'];
-    return required.every(key => form[key]?.trim());
-  };
-
-  const testConnection = async () => {
-    setStatus({ type: '', text: '' });
-    if (!validateForm()) {
-      setStatus({ type: 'error', text: 'Completá todos los campos de Firebase.' });
-      return;
-    }
-    setTesting(true);
-    try {
-      const testName = `centra-test-${Date.now()}`;
-      const testApp = initializeApp(form, testName);
-      const testAuth = getAuth(testApp);
-
-      // La llamada a reset permite distinguir Authentication habilitado
-      // de una configuración incorrecta. No necesitamos crear ningún usuario.
-      try {
-        await sendPasswordResetEmail(testAuth, `__centra_test__${Date.now()}@example.invalid`);
-      } catch (authError) {
-        if (authError?.code === 'auth/operation-not-allowed') throw authError;
-        // auth/user-not-found es una respuesta esperable: significa que Auth funciona.
-      }
-
-      localStorage.setItem(FIREBASE_CONFIG_STORAGE_KEY, JSON.stringify(form));
-      setStatus({ type: 'success', text: 'Firebase conectado y Authentication habilitado. Ahora vamos a crear el administrador inicial.' });
-      setTimeout(() => window.location.reload(), 700);
-    } catch (error) {
-      console.error('Firebase test error:', error);
-      setStatus({ type: 'error', text: describeFirebaseError(error) });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
-        <div className="text-center mb-8">
-          <img src="/icon-192.png" alt="CENTRA" className="w-20 h-20 mx-auto mb-4 rounded-2xl" />
-          <h1 className="text-3xl font-black text-slate-900">Instalación de CENTRA</h1>
-          <p className="text-slate-500 mt-2">Primero conectemos la base de datos de esta institución.</p>
-        </div>
-
-        <div className="flex gap-2 mb-6">
-          <div className={`flex-1 rounded-xl py-2 text-center text-xs font-black ${step === 'firebase' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1. Firebase</div>
-          <div className={`flex-1 rounded-xl py-2 text-center text-xs font-black ${step === 'admin' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-400'}`}>2. Administrador</div>
-        </div>
-
-        {step === 'firebase' ? (
-          <>
-            <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 mb-6 text-sm text-violet-900">
-              <strong>Usá la configuración de la aplicación web</strong> que Firebase muestra en la consola del proyecto.
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              {[
-                ['apiKey','API Key'], ['authDomain','Auth Domain'], ['projectId','Project ID'],
-                ['storageBucket','Storage Bucket'], ['messagingSenderId','Messaging Sender ID'], ['appId','App ID']
-              ].map(([key, label]) => (
-                <label key={key} className="block">
-                  <span className="text-xs font-black uppercase text-slate-500">{label}</span>
-                  <input
-                    value={form[key]}
-                    onChange={e => update(key, e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-violet-200"
-                    placeholder={label}
-                  />
-                </label>
-              ))}
-            </div>
-
-            {status.text && (
-              <div className={`mt-5 rounded-xl p-4 text-sm font-semibold ${status.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-                {status.text}
-              </div>
-            )}
-
-            <button
-              onClick={testConnection}
-              disabled={testing}
-              className="mt-6 w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-3.5 font-black disabled:opacity-60"
-            >
-              {testing ? 'Probando conexión…' : 'Probar y conectar Firebase'}
-            </button>
-          </>
-        ) : null}
-
-        <p className="text-xs text-slate-400 text-center mt-5">
-          La configuración de conexión se guarda solo en esta instalación.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function InitialAdminScreen({ onCreated }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+  const update = (key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const save = async () => {
     setError('');
 
-    if (form.password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
+    const required = [
+      'apiKey',
+      'authDomain',
+      'projectId',
+      'storageBucket',
+      'messagingSenderId',
+      'appId'
+    ];
+
+    const missing = required.filter(key => !form[key].trim());
+
+    if (missing.length) {
+      setError('Completá todos los campos de Firebase.');
       return;
     }
-    if (form.password !== form.confirmPassword) {
-      setError('Las contraseñas no coinciden.');
-      return;
-    }
-    setSaving(true);
 
     try {
-      const credential = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
-      const profile = {
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        fullName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-        email: form.email.trim().toLowerCase(),
-        username: form.email.trim().toLowerCase(),
-        role: 'Equipo Directivo',
-        rol: 'admin',
-        isAdmin: true,
-        authUid: credential.user.uid,
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp()
-      };
+      setSaving(true);
 
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'users', credential.user.uid),
-        profile,
-        { merge: true }
+      const testApp = initializeApp(form, `centra-setup-${Date.now()}`);
+
+      // Verificamos que Firebase pueda inicializarse correctamente.
+      getAuth(testApp);
+      getFirestore(testApp);
+
+      localStorage.setItem(
+        FIREBASE_CONFIG_STORAGE_KEY,
+        JSON.stringify(form)
       );
 
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'config', 'institution'),
-        { installationComplete: true, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
+      window.location.reload();
 
-      localStorage.setItem(INSTALLATION_COMPLETE_KEY, 'true');
-      localStorage.setItem('schoolApp_profile', JSON.stringify({ ...profile, id: credential.user.uid }));
-      onCreated({ ...profile, id: credential.user.uid });
-    } catch (error) {
-      console.error('Initial admin error:', error);
-      if (error?.code === 'auth/email-already-in-use') {
-        setError('Ese correo ya tiene una cuenta en Firebase. Probá iniciar sesión.');
-      } else {
-        setError(describeFirebaseError(error));
-      }
+    } catch (err) {
+      console.error(err);
+      setError(
+        'No se pudo inicializar Firebase. Revisá los datos ingresados.'
+      );
     } finally {
       setSaving(false);
     }
@@ -347,28 +210,73 @@ function InitialAdminScreen({ onCreated }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+
         <div className="text-center mb-8">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-violet-100 text-violet-600 flex items-center justify-center font-black text-2xl">C</div>
-          <h1 className="text-3xl font-black text-slate-900 mt-4">Crear administrador inicial</h1>
-          <p className="text-slate-500 mt-2">Este será el usuario con acceso total a CENTRA.</p>
+          <img
+            src="/icon-192.png"
+            alt="CENTRA"
+            className="w-20 h-20 mx-auto mb-4 rounded-2xl"
+          />
+
+          <h1 className="text-3xl font-black text-slate-900">
+            Configuración inicial
+          </h1>
+
+          <p className="text-slate-500 mt-2">
+            Conectá CENTRA con la base de datos de esta institución.
+          </p>
         </div>
 
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <input required value={form.firstName} onChange={e => update('firstName', e.target.value)} placeholder="Nombre" className="w-full rounded-xl border border-slate-200 px-4 py-3" />
-            <input required value={form.lastName} onChange={e => update('lastName', e.target.value)} placeholder="Apellido" className="w-full rounded-xl border border-slate-200 px-4 py-3" />
+        <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 mb-6 text-sm text-violet-900">
+          <strong>Primer paso:</strong> copiá los datos de configuración
+          de la aplicación web de Firebase.
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+
+          {[
+            ['apiKey', 'API Key'],
+            ['authDomain', 'Auth Domain'],
+            ['projectId', 'Project ID'],
+            ['storageBucket', 'Storage Bucket'],
+            ['messagingSenderId', 'Messaging Sender ID'],
+            ['appId', 'App ID']
+          ].map(([key, label]) => (
+            <label key={key} className="block">
+              <span className="text-xs font-black uppercase text-slate-500">
+                {label}
+              </span>
+
+              <input
+                value={form[key]}
+                onChange={e => update(key, e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-violet-200"
+                placeholder={label}
+              />
+            </label>
+          ))}
+
+        </div>
+
+        {error && (
+          <div className="mt-5 rounded-xl bg-red-50 border border-red-200 text-red-700 p-4 text-sm font-semibold">
+            {error}
           </div>
-          <input required type="email" value={form.email} onChange={e => update('email', e.target.value)} placeholder="Correo electrónico" className="w-full rounded-xl border border-slate-200 px-4 py-3" />
-          <input required minLength={6} type="password" value={form.password} onChange={e => update('password', e.target.value)} placeholder="Contraseña" className="w-full rounded-xl border border-slate-200 px-4 py-3" />
-          <input required minLength={6} type="password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} placeholder="Repetí la contraseña" className="w-full rounded-xl border border-slate-200 px-4 py-3" />
+        )}
 
-          {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 p-4 text-sm font-semibold">{error}</div>}
+        <button
+          onClick={save}
+          disabled={saving}
+          className="mt-6 w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-3.5 font-black disabled:opacity-60"
+        >
+          {saving ? 'Conectando…' : 'Conectar CENTRA'}
+        </button>
 
-          <button disabled={saving} className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-3.5 font-black disabled:opacity-60">
-            {saving ? 'Creando administrador…' : 'Crear administrador y entrar'}
-          </button>
-        </form>
+        <p className="text-xs text-slate-400 text-center mt-5">
+          Esta configuración se guarda únicamente en esta instalación.
+        </p>
+
       </div>
     </div>
   );
@@ -379,38 +287,56 @@ export default function App() {
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [minTimePassed, setMinTimePassed] = useState(false);
-  const [installationComplete, setInstallationComplete] = useState(
-    () => localStorage.getItem(INSTALLATION_COMPLETE_KEY) === 'true'
-  );
 
   useEffect(() => {
-    const timer = setTimeout(() => setMinTimePassed(true), 700);
+    const timer = setTimeout(() => setMinTimePassed(true), 2500);
 
     if (!auth) {
       setLoading(false);
       return () => clearTimeout(timer);
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribe = () => {};
+
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
+    };
+
+    initAuth();
+
+    unsubscribe = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
 
-      if (user?.uid) {
+      const savedProfile = localStorage.getItem('schoolApp_profile');
+
+      if (savedProfile) {
         try {
-          const userDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid));
+          setCurrentUserProfile(JSON.parse(savedProfile));
+        } catch (error) {
+          console.error('Error al recuperar el perfil guardado:', error);
+          localStorage.removeItem('schoolApp_profile');
+          setCurrentUserProfile(null);
+        }
+      } else if (user && user.uid) {
+        // Compatibilidad con perfiles almacenados en Firestore.
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
             const profile = { ...userDoc.data(), id: userDoc.id };
             setCurrentUserProfile(profile);
             localStorage.setItem('schoolApp_profile', JSON.stringify(profile));
           }
         } catch (error) {
-          console.warn('No se pudo recuperar el perfil:', error);
+          console.warn('No se pudo recuperar el perfil desde Firestore:', error);
         }
-      } else {
-        const savedProfile = localStorage.getItem('schoolApp_profile');
-        if (savedProfile) {
-          localStorage.removeItem('schoolApp_profile');
-        }
-        setCurrentUserProfile(null);
       }
 
       setLoading(false);
@@ -427,23 +353,14 @@ export default function App() {
     localStorage.setItem('schoolApp_profile', JSON.stringify(profileData));
   };
 
-  const handleLogout = async () => {
-    try {
-      if (auth?.currentUser) await signOut(auth);
-    } catch {}
+  const handleLogout = () => {
     setCurrentUserProfile(null);
     localStorage.removeItem('schoolApp_profile');
   };
 
+  // Instalación nueva: todavía no existe una configuración de Firebase.
   if (Object.keys(firebaseConfig).length === 0) {
     return <FirebaseSetupScreen />;
-  }
-
-  if (!installationComplete) {
-    return <InitialAdminScreen onCreated={(profile) => {
-      setInstallationComplete(true);
-      setCurrentUserProfile(profile);
-    }} />;
   }
 
   if (loading || !minTimePassed) {
@@ -504,91 +421,33 @@ function LoginScreen({ onLogin }) {
     }
   };
 
-
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setChecking(true);
-
-    try {
-      let email = username.trim().toLowerCase();
-
-      if (!email.includes('@')) {
-        const q = query(
-          collection(db, 'artifacts', appId, 'public', 'data', 'users'),
-          where('username', '==', email)
-        );
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-          setError('No encontramos ese usuario.');
-          return;
-        }
-
-        const userData = snapshot.docs[0].data();
-        if (!userData.email) {
-          setError('Este usuario pertenece al sistema anterior y no tiene correo asociado. Creá nuevamente su cuenta desde Gestión de Usuarios.');
-          return;
-        }
-        email = userData.email;
-      }
-
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-
-      const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', credential.user.uid);
-      const profileSnap = await getDoc(profileRef);
-
-      if (!profileSnap.exists()) {
-        setError('La cuenta existe en Firebase, pero todavía no tiene un perfil institucional.');
-        await signOut(auth);
-        return;
-      }
-
-      const profile = { ...profileSnap.data(), id: profileSnap.id };
-      await updateDoc(profileRef, { lastLogin: serverTimestamp() }).catch(() => {});
-      onLogin(profile);
-    } catch (err) {
-      console.error('Login error:', err);
-      const code = err?.code || '';
-      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-        setError('Correo, usuario o contraseña incorrectos.');
-      } else {
-        setError(describeFirebaseError(err));
-      }
-    } finally {
-      setChecking(false);
+    e.preventDefault(); setError(''); setChecking(true);
+    if (import.meta.env.DEV && username === 'demo' && password === 'demo') {
+      onLogin({ id: 'dev-super-admin', firstName: 'Usuario', lastName: 'Demo', fullName: 'Usuario Demo', role: 'Equipo Directivo', rol: 'super-admin', isAdmin: true, username: 'demo' }); return;
     }
+    try {
+      const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+      const q = query(usersRef, where('username', '==', username.toLowerCase()), where('password', '==', password));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const userDoc = querySnapshot.docs[0]; const userData = userDoc.data();
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userDoc.id), { lastLogin: serverTimestamp() });
+        const esAdmin = userData.rol === 'admin';
+        onLogin({ ...userData, id: userDoc.id, isAdmin: esAdmin });
+      } else { setError('Usuario o contraseña incorrectos.'); }
+    } catch (err) { setError('Error de conexión.'); } finally { setChecking(false); }
   };
 
   const handleRequestReset = async (e) => {
-    e.preventDefault();
-    if (!recoverUser.trim()) return;
-    setRecoverStatus('sending');
-
+    e.preventDefault(); if(!recoverUser.trim()) return; setRecoverStatus('sending');
     try {
-      const value = recoverUser.trim().toLowerCase();
-      let email = value;
-
-      if (!value.includes('@')) {
-        const q = query(
-          collection(db, 'artifacts', appId, 'public', 'data', 'users'),
-          where('username', '==', value)
-        );
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), where('username', '==', recoverUser));
         const snapshot = await getDocs(q);
-        if (snapshot.empty || !snapshot.docs[0].data().email) {
-          setRecoverStatus('error');
-          setTimeout(() => setRecoverStatus('idle'), 3000);
-          return;
-        }
-        email = snapshot.docs[0].data().email;
-      }
-
-      await sendPasswordResetEmail(auth, email);
-      setRecoverStatus('sent');
-    } catch (error) {
-      console.error('Reset error:', error);
-      setRecoverStatus('error');
-    }
+        if (snapshot.empty) { setRecoverStatus('error'); setTimeout(() => setRecoverStatus('idle'), 3000); return; }
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'requests'), { type: 'password_reset', username: recoverUser, status: 'pending', createdAt: serverTimestamp() });
+        setRecoverStatus('sent');
+    } catch (error) { setRecoverStatus('error'); }
   };
 
   return (
@@ -648,19 +507,19 @@ function LoginScreen({ onLogin }) {
             <div><label className="block text-xs font-bold text-violet-900 uppercase mb-2 ml-1">Contraseña</label><div className="relative group"><Lock className="absolute left-3 top-3.5 text-violet-300" size={18} /><input type="password" required className="w-full pl-10 pr-4 py-3 bg-violet-50 border border-violet-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-400" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} /></div></div>
             <div className="flex justify-end"><button type="button" onClick={() => setShowRecover(true)} className="text-xs font-bold text-violet-600 hover:text-orange-500 transition">¿Olvidaste tu contraseña?</button></div>
             {error && <div className="bg-red-50 text-red-600 text-sm p-4 rounded-xl flex items-center gap-3 border border-red-100">{error}</div>}
-            <button type="submit" disabled={checking} className="w-full bg-gradient-to-r from-violet-600 to-violet-800 text-white py-4 rounded-xl font-bold text-lg hover:from-orange-500 hover:to-orange-600 transition duration-300 shadow-xl disabled:opacity-70 flex justify-center items-center">{checking ? <RefreshCw className="animate-spin" /> : 'Ingresar a CENTRA'}</button>
+            <button type="submit" disabled={checking} className="w-full bg-gradient-to-r from-violet-600 to-violet-800 text-white py-4 rounded-xl font-bold text-lg hover:from-orange-500 hover:to-orange-600 transition duration-300 shadow-xl disabled:opacity-70 flex justify-center items-center">{checking ? <RefreshCw className="animate-spin" /> : 'Ingresar al Portal'}</button>
           </form>
         ) : (
           <div className="animate-in fade-in slide-in-from-right">
               <div className="bg-violet-50 p-6 rounded-2xl text-center mb-6 border border-violet-100">
                 <Key className="mx-auto text-violet-500 mb-2" size={40} />
-                <h3 className="font-bold text-violet-900 text-lg mb-2">Restablecer contraseña</h3>
-                <p className="text-sm text-gray-600 mb-4">Ingresá tu correo o usuario para recibir un enlace de recuperación.</p>
+                <h3 className="font-bold text-violet-900 text-lg mb-2">Solicitar Blanqueo</h3>
+                <p className="text-sm text-gray-600 mb-4">Ingresa tu usuario para notificar a administración.</p>
                 {recoverStatus === 'sent' ? (
                     <div className="bg-green-100 text-green-700 p-3 rounded-xl mb-4 text-sm font-bold flex items-center justify-center gap-2"><CheckCircle size={18} /> ¡Solicitud Enviada!</div>
                 ) : (
                     <form onSubmit={handleRequestReset} className="mb-4">
-                        <input className="w-full p-3 bg-white border border-violet-200 rounded-xl mb-3 text-center focus:ring-2 focus:ring-orange-400 outline-none" placeholder="Correo o usuario" value={recoverUser} onChange={(e) => setRecoverUser(e.target.value)} required />
+                        <input className="w-full p-3 bg-white border border-violet-200 rounded-xl mb-3 text-center focus:ring-2 focus:ring-orange-400 outline-none" placeholder="Tu Usuario" value={recoverUser} onChange={(e) => setRecoverUser(e.target.value)} required />
                         <button type="submit" disabled={recoverStatus === 'sending'} className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition flex items-center justify-center gap-2">{recoverStatus === 'sending' ? <RefreshCw className="animate-spin" size={18} /> : <><Send size={18} /> Enviar Solicitud</>}</button>
                         {recoverStatus === 'error' && <p className="text-xs text-red-500 mt-2 font-bold">Error de red o usuario incorrecto.</p>}
                     </form>
