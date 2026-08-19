@@ -99,10 +99,6 @@ const app =
 
 const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
-const firebaseConfig = getFirebaseConfig();
-const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
-const auth = app ? getAuth(app) : null;
-const db = app ? getFirestore(app) : null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'escuela-app-prod';
 
  
@@ -293,40 +289,14 @@ export default function App() {
   const [minTimePassed, setMinTimePassed] = useState(false);
 
   useEffect(() => {
-    setTimeout(() => setMinTimePassed(true), 2500);
+    const timer = setTimeout(() => setMinTimePassed(true), 2500);
 
     if (!auth) {
       setLoading(false);
-      return;
+      return () => clearTimeout(timer);
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-
-      if (user) {
-        try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-
-          if (userDoc.exists()) {
-            setCurrentUserProfile(userDoc.data());
-          } else {
-            setCurrentUserProfile(null);
-          }
-        } catch (error) {
-          console.error("Error al cargar el perfil:", error);
-          setCurrentUserProfile(null);
-        }
-      } else {
-        setCurrentUserProfile(null);
-      }
-
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // El resto de tu App sigue exactamente igual desde acá...
+    let unsubscribe = () => {};
 
     const initAuth = async () => {
       try {
@@ -335,27 +305,77 @@ export default function App() {
         } else {
           await signInAnonymously(auth);
         }
-      } catch (error) { console.error("Auth error:", error); }
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
     };
+
     initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    unsubscribe = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
+
       const savedProfile = localStorage.getItem('schoolApp_profile');
-      if (savedProfile) setCurrentUserProfile(JSON.parse(savedProfile));
+
+      if (savedProfile) {
+        try {
+          setCurrentUserProfile(JSON.parse(savedProfile));
+        } catch (error) {
+          console.error('Error al recuperar el perfil guardado:', error);
+          localStorage.removeItem('schoolApp_profile');
+          setCurrentUserProfile(null);
+        }
+      } else if (user && user.uid) {
+        // Compatibilidad con perfiles almacenados en Firestore.
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const profile = { ...userDoc.data(), id: userDoc.id };
+            setCurrentUserProfile(profile);
+            localStorage.setItem('schoolApp_profile', JSON.stringify(profile));
+          }
+        } catch (error) {
+          console.warn('No se pudo recuperar el perfil desde Firestore:', error);
+        }
+      }
+
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
-  const handleLogin = (profileData) => { setCurrentUserProfile(profileData); localStorage.setItem('schoolApp_profile', JSON.stringify(profileData)); };
-  const handleLogout = () => { setCurrentUserProfile(null); localStorage.removeItem('schoolApp_profile'); };
+  const handleLogin = (profileData) => {
+    setCurrentUserProfile(profileData);
+    localStorage.setItem('schoolApp_profile', JSON.stringify(profileData));
+  };
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-violet-50"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-violet-600"></div></div>;
- if (!currentUserProfile) return <LoginScreen onLogin={handleLogin} />;
+  const handleLogout = () => {
+    setCurrentUserProfile(null);
+    localStorage.removeItem('schoolApp_profile');
+  };
 
-  
- return <MainApp user={currentUserProfile} onLogout={handleLogout} />;
+  // Instalación nueva: todavía no existe una configuración de Firebase.
+  if (Object.keys(firebaseConfig).length === 0) {
+    return <FirebaseSetupScreen />;
+  }
+
+  if (loading || !minTimePassed) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-violet-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-violet-600"></div>
+      </div>
+    );
+  }
+
+  if (!currentUserProfile) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  return <MainApp user={currentUserProfile} onLogout={handleLogout} />;
 }
 
 
