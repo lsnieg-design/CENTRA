@@ -681,7 +681,9 @@ export function applyBranding(config) {
     .text-violet-700 {
       color: var(--app-primary) !important;
     }
-
+.bg-violet-800 {
+  background-color: var(--app-primary) !important;
+}
     .text-violet-900 {
       color: color-mix(
         in srgb,
