@@ -345,9 +345,68 @@ return (
                     ))}
                 </div>
                 <div className="flex-1 overflow-y-auto pr-2 space-y-4 text-sm text-gray-600">
-                    {tutorialTab === 'inicio' && <><div className="bg-orange-50 p-4 rounded-2xl border border-orange-100"><h4 className="font-bold text-orange-800 mb-1">Panel Principal</h4><p>Centro de mando con tus tareas y avisos.</p></div><div className="bg-blue-50 p-4 rounded-2xl border border-blue-100"><h4 className="font-bold text-blue-800 mb-1">Tareas Personales</h4><p>Notas privadas solo para vos.</p></div></>}
-                    {tutorialTab === 'legajos' && <div className="bg-green-50 p-4 rounded-2xl border border-green-100"><h4 className="font-bold text-green-800 mb-1">Buscador</h4><p>Busca alumnos y filtra por DX o docente.</p></div>}
-                    {tutorialTab === 'aula' && <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100"><h4 className="font-bold text-indigo-800 mb-1">Mi Aula</h4><p>Gestión de grupos y asistencia.</p></div>}
+                    {tutorialTab === 'inicio' && (
+                      <>
+                        <div className="bg-violet-50 p-5 rounded-2xl border border-violet-100">
+                          <h4 className="font-black text-violet-900 text-base mb-2">Inicio</h4>
+                          <p className="leading-relaxed">Es tu vista general de la institución. Desde acá podés revisar avisos, tareas pendientes, próximos eventos y accesos rápidos.</p>
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100"><h4 className="font-bold text-orange-800 mb-1">Avisos</h4><p>Publicá información importante para que el equipo la tenga a mano.</p></div>
+                          <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100"><h4 className="font-bold text-blue-800 mb-1">Tareas</h4><p>Organizá pendientes personales y de trabajo.</p></div>
+                          <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100"><h4 className="font-bold text-emerald-800 mb-1">Agenda</h4><p>Consultá actividades y fechas importantes de la institución.</p></div>
+                          <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100"><h4 className="font-bold text-indigo-800 mb-1">Accesos rápidos</h4><p>Usá la navegación inferior para entrar a las secciones que tengas habilitadas.</p></div>
+                        </div>
+                      </>
+                    )}
+                    {tutorialTab === 'legajos' && (
+                      <div className="bg-green-50 p-5 rounded-2xl border border-green-100 space-y-3">
+                        <h4 className="font-black text-green-900 text-base">Legajos</h4>
+                        <p>Centraliza la información de las personas que forman parte de la institución.</p>
+                        <p><strong>Buscar:</strong> encontrá rápidamente por nombre o apellido.</p>
+                        <p><strong>Ficha:</strong> accedé a la información disponible y a los registros asociados.</p>
+                        <p><strong>Edición:</strong> los datos que podés modificar dependen de tus permisos.</p>
+                      </div>
+                    )}
+                    {tutorialTab === 'aula' && (
+                      <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
+                        <h4 className="font-black text-indigo-900 text-base">Mi Aula</h4>
+                        <p>Es el espacio para organizar grupos, consultar integrantes y trabajar con la información cotidiana del aula.</p>
+                        <p><strong>Grupos:</strong> ingresá al grupo correspondiente para consultar sus integrantes.</p>
+                        <p><strong>Asistencia y seguimiento:</strong> las opciones disponibles dependen de los módulos habilitados.</p>
+                      </div>
+                    )}
+                    {tutorialTab === 'tareas' && (
+                      <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-3">
+                        <h4 className="font-black text-blue-900 text-base">Tareas</h4>
+                        <p>Usá esta sección para ordenar pendientes, fechas y tareas de trabajo.</p>
+                        <p><strong>Nueva tarea:</strong> cargá qué hay que hacer y cuándo.</p>
+                        <p><strong>Seguimiento:</strong> marcá las tareas resueltas para mantener una vista clara de lo que queda pendiente.</p>
+                      </div>
+                    )}
+                    {tutorialTab === 'agenda' && (
+                      <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 space-y-3">
+                        <h4 className="font-black text-emerald-900 text-base">Agenda</h4>
+                        <p>Consultá y organizá eventos y actividades institucionales.</p>
+                        <p><strong>Calendario:</strong> revisá las próximas fechas.</p>
+                        <p><strong>Organización:</strong> usá las fechas como referencia común para el equipo.</p>
+                      </div>
+                    )}
+                    {tutorialTab === 'recursos' && (
+                      <div className="bg-cyan-50 p-5 rounded-2xl border border-cyan-100 space-y-3">
+                        <h4 className="font-black text-cyan-900 text-base">Recursos</h4>
+                        <p>Reuní materiales, enlaces y recursos útiles para el trabajo institucional.</p>
+                        <p><strong>Agregar:</strong> incorporá un recurso cuando tengas permisos para hacerlo.</p>
+                        <p><strong>Consultar:</strong> accedé desde esta sección cuando necesites recuperar un material.</p>
+                      </div>
+                    )}
+                    {tutorialTab === 'proyecto' && (
+                      <div className="bg-orange-50 p-5 rounded-2xl border border-orange-100 space-y-3">
+                        <h4 className="font-black text-orange-900 text-base">Proyecto institucional</h4>
+                        <p>Espacio para reunir y consultar la información del proyecto institucional y sus líneas de trabajo.</p>
+                        <p>Las opciones disponibles pueden variar según la configuración y los permisos de tu institución.</p>
+                      </div>
+                    )}
                 </div>
                 <button onClick={() => setShowTutorial(false)} className="w-full bg-violet-600 text-white py-3 rounded-2xl font-bold mt-4 shadow-lg uppercase text-xs">¡Entendido!</button>
             </div>
