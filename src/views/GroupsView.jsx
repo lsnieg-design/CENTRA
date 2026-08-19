@@ -2,9 +2,12 @@ import { getInstitutionName } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import { StudentDetailView } from './StudentDetailView';
 import { 
-  User, FileText, Plus, Users, Grid, CheckCircle, ChevronRight, RefreshCw, ChevronLeft, Printer, MessageSquare, Send, Folder, Edit3, X, Search, GraduationCap, Activity, Shield, MapPin, Phone, Download 
+  User, FileText, Plus, Users, Grid, CheckCircle, ChevronRight, RefreshCw, ChevronLeft, Printer, MessageSquare, Send, Folder, Edit3, X, Search, GraduationCap, Activity, Shield, MapPin, Phone, Settings2, UserPlus, UsersRound, Save 
 } from 'lucide-react';
-import { doc, updateDoc, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, arrayUnion, arrayRemove, where } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, arrayUnion, arrayRemove, where, getDocs } from 'firebase/firestore';
+import { createGroup, updateGroup } from '../data/groups';
+import { createStaffGroupAssignment, closeStaffGroupAssignment, getStaffGroupAssignmentsForGroup } from '../data/assignments';
+import { COLLECTIONS } from '../data/collections';
 
 // -------------------------------------------------------------
 // FUNCIONES AUXILIARES DE FECHAS Y EDAD (SANEAMIENTO)
@@ -37,121 +40,255 @@ const checkCudStatus = (cudDate) => {
 
 export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
   const [students, setStudents] = useState([]);
-  const [usersList, setUsersList] = useState([]); 
-  const [turn, setTurn] = useState('morning'); 
+  const [staffList, setStaffList] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [staffAssignments, setStaffAssignments] = useState([]);
+  const [institutionConfig, setInstitutionConfig] = useState({ turns: [], staffRoles: [] });
+  const [selectedTurnId, setSelectedTurnId] = useState('all');
+
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [fullFileStudent, setFullFileStudent] = useState(null);
-  const [showBitacoraModal, setShowBitacoraModal] = useState(null); 
+  const [showBitacoraModal, setShowBitacoraModal] = useState(null);
   const [groupMessages, setGroupMessages] = useState({});
   const [selectedGroupDetails, setSelectedGroupDetails] = useState(null);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [informeEpoca, setInformeEpoca] = useState(1);
-  const [newNote, setNewNote] = useState("");
+  const [newNote, setNewNote] = useState('');
   const [isWriting, setIsWriting] = useState(false);
   const [savingIncident, setSavingIncident] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
+  const [staffSelections, setStaffSelections] = useState({});
   const [updatingGroup, setUpdatingGroup] = useState(false);
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   const [groupsToPrint, setGroupsToPrint] = useState([]);
-  const [printMode, setPrintMode] = useState('students'); // 'students' o 'staff'
-  const [viewMode, setViewMode] = useState('Sede'); 
+  const [printMode, setPrintMode] = useState('students');
   const [socialCases, setSocialCases] = useState([]);
 
   const scrollRef = useRef(null);
-  const scroll = (direction) => { if (scrollRef.current) { const amount = 350; scrollRef.current.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' }); } };
+  const scroll = (direction) => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollBy({
+      left: direction === 'left' ? -350 : 350,
+      behavior: 'smooth'
+    });
+  };
 
-  const isManagement = ['admin', 'super-admin', 'Equipo Directivo', 'Equipo Técnico', 'Administración', 'Dirección Inclusión', 'Equipo Técnico Inclusión'].includes(user.role) || user.rol === 'admin';
+  const isManagement = [
+    'admin',
+    'super-admin',
+    'Equipo Directivo',
+    'Equipo Técnico',
+    'Administración'
+  ].includes(user.role) || user.rol === 'admin';
+
+  const turnOptions = (Array.isArray(institutionConfig.turns) ? institutionConfig.turns : []).map((turn, index) => {
+    if (typeof turn === 'string') return { id: `turno_${index + 1}`, name: turn };
+    return {
+      id: turn?.id || `turno_${index + 1}`,
+      name: turn?.name || turn?.label || `Turno ${index + 1}`
+    };
+  });
+
+  const roleOptions = (Array.isArray(institutionConfig.staffRoles) ? institutionConfig.staffRoles : []).map((role, index) => {
+    if (typeof role === 'string') {
+      return {
+        id: role.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+        name: role,
+        requiredForGroup: role.toLowerCase() === 'docente'
+      };
+    }
+    return {
+      id: role?.id || `rol_${index + 1}`,
+      name: role?.name || role?.label || `Rol ${index + 1}`,
+      requiredForGroup: Boolean(role?.requiredForGroup)
+    };
+  });
+
+  const docenteRole = roleOptions.find(
+    role => role.id === 'docente' || role.name.toLowerCase() === 'docente'
+  ) || { id: 'docente', name: 'Docente', requiredForGroup: true };
+
+  const normalizeRoles = (roles = []) => {
+    const result = Array.isArray(roles) ? [...roles] : [];
+    if (!result.includes(docenteRole.id)) result.unshift(docenteRole.id);
+    return [...new Set(result)];
+  };
+
+  const getTurnLabel = (turnId) =>
+    turnOptions.find(turn => turn.id === turnId)?.name || turnId || '';
+
+  const getRoleLabel = (roleId) =>
+    roleOptions.find(role => role.id === roleId)?.name || roleId || 'Rol';
 
   const INCIDENT_TYPES = [
-    { label: "Trabajó Muy Bien", emoji: "🌟", severity: "positive", color: "bg-emerald-100 border-emerald-300 text-emerald-800" },
-    { label: "Buena Conducta", emoji: "😇", severity: "positive", color: "bg-emerald-100 border-emerald-300 text-emerald-800" },
-    { label: "Crisis Llanto", emoji: "😭", severity: "medium", color: "bg-orange-100 border-orange-300 text-orange-800" },
-    { label: "Agresión / Violencia", emoji: "👊", severity: "high", color: "bg-red-100 border-red-300 text-red-800" },
-    { label: "Fuga / Intento", emoji: "🏃", severity: "high", color: "bg-red-100 border-red-300 text-red-800" },
-    { label: "Ausentismo", emoji: "🏠", severity: "medium", color: "bg-blue-100 border-blue-300 text-blue-800" }, 
+    { label: 'Trabajó Muy Bien', emoji: '🌟', severity: 'positive', color: 'bg-emerald-100 border-emerald-300 text-emerald-800' },
+    { label: 'Buena Conducta', emoji: '😇', severity: 'positive', color: 'bg-emerald-100 border-emerald-300 text-emerald-800' },
+    { label: 'Crisis Llanto', emoji: '😭', severity: 'medium', color: 'bg-orange-100 border-orange-300 text-orange-800' },
+    { label: 'Agresión / Violencia', emoji: '👊', severity: 'high', color: 'bg-red-100 border-red-300 text-red-800' },
+    { label: 'Fuga / Intento', emoji: '🏃', severity: 'high', color: 'bg-red-100 border-red-300 text-red-800' },
+    { label: 'Ausentismo', emoji: '🏠', severity: 'medium', color: 'bg-blue-100 border-blue-300 text-blue-800' }
   ];
-  
 
- useEffect(() => {
+  useEffect(() => {
     if (!db || !appId) return;
-    const unsubS = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'students'), where('isActive', '==', true)), (snap) => setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubU = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'users'), orderBy('lastName', 'asc')), (snap) => setUsersList(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubGM = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'group_mural'), orderBy('createdAt', 'desc')), (snap) => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setGroupMessages(msgs.reduce((acc, m) => { if (!acc[m.groupName]) acc[m.groupName] = []; acc[m.groupName].push(m); return acc; }, {}));
-    });
-    // --- ESCUCHA DE SOCIAL CASES ---
-    const unsubSocial = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'social_cases'), (snap) => {
-      setSocialCases(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => { unsubS(); unsubU(); unsubGM(); if (typeof unsubSocial === 'function') unsubSocial(); };
+
+    let configDoc = () => {};
+    let unsubGroups = () => {};
+    let unsubStaff = () => {};
+    let unsubStudentPeople = () => {};
+    let unsubStudentProfiles = () => {};
+    let unsubStudentAssignments = () => {};
+    let unsubStaffAssignments = () => {};
+    let unsubMural = () => {};
+    let unsubSocial = () => {};
+
+    configDoc = onSnapshot(
+      doc(db, 'artifacts', appId, 'public', 'data', 'config', 'institution'),
+      snap => setInstitutionConfig(snap.exists() ? snap.data() : { turns: [], staffRoles: [] })
+    );
+
+    unsubGroups = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.GROUPS),
+      snap => setGroups(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(group => group.active !== false)
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      )
+    );
+
+    unsubStaff = onSnapshot(
+      query(
+        collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.PEOPLE),
+        where('type', '==', 'staff')
+      ),
+      snap => setStaffList(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    // Estudiantes de la arquitectura nueva: people + student_profiles.
+    let studentPeople = [];
+    let studentProfiles = [];
+    let studentAssignments = [];
+
+    const rebuildStudents = () => {
+      const peopleById = new Map(studentPeople.map(person => [person.id, person]));
+      const result = studentProfiles.map(profile => {
+        const person = peopleById.get(profile.personId) || {};
+        const assignments = studentAssignments.filter(item =>
+          item.studentId === (profile.personId || person.id) &&
+          item.status !== 'closed' &&
+          !item.validTo
+        );
+        return {
+          ...person,
+          ...profile,
+          id: profile.personId || person.id,
+          personId: profile.personId || person.id,
+          firstName: profile.firstName || person.firstName || '',
+          lastName: profile.lastName || person.lastName || '',
+          fullName: profile.fullName || person.fullName || `${person.firstName || ''} ${person.lastName || ''}`.trim(),
+          groupAssignments: assignments
+        };
+      });
+      setStudents(result);
+    };
+
+    unsubStudentPeople = onSnapshot(
+      query(collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.PEOPLE), where('type', '==', 'student')),
+      snap => {
+        studentPeople = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        rebuildStudents();
+      }
+    );
+
+    unsubStudentProfiles = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.STUDENT_PROFILES),
+      snap => {
+        studentProfiles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        rebuildStudents();
+      }
+    );
+
+    unsubStudentAssignments = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.STUDENT_GROUP_ASSIGNMENTS),
+      snap => {
+        studentAssignments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        rebuildStudents();
+      }
+    );
+
+    unsubStaffAssignments = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', COLLECTIONS.STAFF_GROUP_ASSIGNMENTS),
+      snap => setStaffAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    unsubMural = onSnapshot(
+      query(collection(db, 'artifacts', appId, 'public', 'data', 'group_mural'), orderBy('createdAt', 'desc')),
+      snap => {
+        const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setGroupMessages(msgs.reduce((acc, message) => {
+          const key = message.groupId || message.groupName || 'sin-grupo';
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(message);
+          return acc;
+        }, {}));
+      }
+    );
+
+    unsubSocial = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', 'social_cases'),
+      snap => setSocialCases(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    return () => {
+      configDoc();
+      unsubGroups();
+      unsubStaff();
+      unsubStudentPeople();
+      unsubStudentProfiles();
+      unsubStudentAssignments();
+      unsubStaffAssignments();
+      unsubMural();
+      unsubSocial();
+    };
   }, [db, appId]);
 
   const gruposFinales = React.useMemo(() => {
-    const suf = turn === 'morning' ? 'Morning' : 'Afternoon';
-
-    const grouped = students.reduce((acc, s) => {
-      const studentModality = s.modality || 'Sede';
-      if (studentModality !== viewMode) return acc;
-
-      const gName = viewMode === 'Sede' ? s[`group${suf}`] : (s[`dai${suf}`] || 'SIN DAI ASIGNADA');
-      const teacherName = s[`teacher${suf}`];
-      const teacher2Name = s[`teacher2${suf}`];
-      const auxName = s[`aux${suf}`];
-      const daiName = s[`dai${suf}`];
-
-      if (!isManagement) {
-        const userMatches = 
-          teacherName === user.fullName || 
-          teacher2Name === user.fullName || 
-          auxName === user.fullName || 
-          daiName === user.fullName;
-
-        if (!userMatches) return acc;
-      }
-
-      if (!gName) return acc;
-      
-      if (!acc[gName]) { 
-        acc[gName] = { 
-          name: gName, 
-          students: [], 
-          teacher: viewMode === 'Sede' ? (s[`teacher${suf}`] || '') : gName, 
-          teacher2: s[`teacher2${suf}`] || '',
-          aux: viewMode === 'Sede' ? (s[`aux${suf}`] || '') : (s.originSchool || 'Escuela común'),
-          profePlastica: s.profePlastica || '',
-          profeMusica: s.profeMusica || '',
-          profeEF: s.profeEF || '',
-          profePsico: s.profePsico || '',
-          classroom: viewMode === 'Sede' ? s.classroom : s.originGrade, 
-          driveLink: s[`driveLink${suf}`], 
-          institucionalDrive: s.institucionalDrive,
-          stats: { varones: 0, mujeres: 0, conDI: 0, conTEA: 0 }
+    return groups
+      .filter(group => selectedTurnId === 'all' ||
+        (Array.isArray(group.turnIds)
+          ? group.turnIds.includes(selectedTurnId)
+          : group.turnId === selectedTurnId))
+      .map(group => {
+        const turnIds = Array.isArray(group.turnIds) ? group.turnIds : (group.turnId ? [group.turnId] : []);
+        const studentsInGroup = students.filter(student =>
+          (student.groupAssignments || []).some(assignment =>
+            assignment.groupId === group.id &&
+            (selectedTurnId === 'all' ||
+              !Array.isArray(assignment.turnIds) ||
+              assignment.turnIds.length === 0 ||
+              assignment.turnIds.includes(selectedTurnId))
+          )
+        );
+        const staffByRole = staffAssignments.filter(item => item.groupId === group.id && item.status !== 'closed' && !item.validTo).map(assignment => {
+          const person = staffList.find(item => item.id === assignment.staffId);
+          return {
+            ...assignment,
+            person,
+            roleName: getRoleLabel(assignment.roleId),
+            name: person?.fullName || `${person?.firstName || ''} ${person?.lastName || ''}`.trim() || 'Sin asignar'
+          };
+        });
+        return {
+          ...group,
+          turnIds,
+          turnLabels: turnIds.map(getTurnLabel).filter(Boolean),
+          enabledRoles: normalizeRoles(group.enabledRoles),
+          students: studentsInGroup,
+          staffByRole
         };
-      }
-
-      acc[gName].students.push(s);
-
-      const gender = s.gender?.toLowerCase() || '';
-      const dx = (s.dx || '')
-        .toUpperCase()
-        .trim()
-        .replace(/\./g, '')
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-
-      if (gender === 'masculino' || gender === 'v' || gender === 'm') acc[gName].stats.varones++;
-      if (gender === 'femenino' || gender === 'f') acc[gName].stats.mujeres++;
-      if (dx.includes('DI') || dx.includes('INTELECTUAL')) acc[gName].stats.conDI++;
-      if (dx.includes('TES') || dx.includes('EMOCIONAL') || dx.includes('CONDUCTA')) acc[gName].stats.conTEA++;
-
-      return acc;
-    }, {});
-
-    return Object.values(grouped).sort((a, b) => 
-      a.name.includes("INICIAL") ? -1 : a.name.localeCompare(b.name)
-    );
-  }, [students, turn, viewMode, user, isManagement]);
+      });
+  }, [groups, students, staffList, staffAssignments, selectedTurnId, roleOptions.length]);
 
   const imprimirBitacora = (student) => {
       const getEdad = (d) => { if (!d) return '-'; const t = new Date(); const b = new Date(d); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--; return a; };
@@ -226,35 +363,6 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
           setTimeout(() => { document.body.removeChild(iframe); }, 5000);
       }, 500);
   };
-// --- FUNCIÓN DE DESCARGA EXCEL EXCLUSIVA PARA ADMIN ---
-  const exportGroupsToExcel = () => {
-    if (!isManagement) return;
-
-    let csvContent = "\uFEFF"; // BOM para correcta lectura de tildes en Excel
-    csvContent += "GRUPO,APELLIDO Y NOMBRE,DNI,EDAD,GENERO,DIAGNOSTICO\n";
-
-    gruposFinales.forEach(g => {
-      g.students.sort((a, b) => a.lastName.localeCompare(b.lastName)).forEach(s => {
-        const grupoEscapes = `"${g.name.replace(/"/g, '""')}"`;
-        const nombreCompleto = `"${(s.lastName + ", " + s.firstName).replace(/"/g, '""')}"`;
-        const dni = `"${s.dni || ''}"`;
-        const edad = `"${calculateAge(s.birthDate)}"`;
-        const genero = `"${s.gender || ''}"`;
-        const dx = `"${(s.dx || '').replace(/"/g, '""')}"`;
-
-        csvContent += `${grupoEscapes},${nombreCompleto},${dni},${edad},${genero},${dx}\n`;
-      });
-    });
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Informacion_Grupos_${turn.toUpperCase()}_${viewMode}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
   const printGroups = (groupsList) => {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0'; iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
@@ -285,34 +393,33 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
     </style></head><body>`;
 
     if (printMode === 'staff') {
-      h += `<h1>Listado de Organización de Staff - 2026</h1>
+      h += `<h1>Organización de personal por grupo</h1>
             <table><thead><tr>
-              <th>Grupo / DAI</th>
-              <th>Docente Titular</th>
-              <th>Docente Pareja / Escuela</th>
-              <th>Auxiliar / Preceptor</th>
-              <th>Aula / Grado</th>
+              <th>Grupo</th>
+              <th>Docente</th>
+              <th>Otros roles</th>
+              <th>Turnos</th>
+              <th>Aula / Espacio</th>
             </tr></thead><tbody>`;
       groupsList.forEach(g => {
         h += `<tr>
           <td><b>${g.name}</b></td>
-          <td>${g.teacher || '-'}</td>
-          <td>${g.teacher2 || g.aux || '-'}</td>
-          <td>${g.aux || '-'}</td>
+          <td>${g.staffByRole?.find(x => x.roleId === docenteRole.id)?.name || '-'}</td>
+          <td>${g.staffByRole?.filter(x => x.roleId !== docenteRole.id).map(x => `${x.roleName}: ${x.name}`).join(' | ') || '-'}</td>
+          <td>${g.turnLabels?.join(' · ') || '-'}</td>
           <td>${g.classroom || '-'}</td>
         </tr>`;
       });
       h += `</tbody></table>`;
     } else {
-      const turnoTexto = turn === 'morning' ? 'Mañana' : 'Tarde';
-      
       groupsList.forEach(g => {
+        const turnoTexto = g.turnLabels?.join(' · ') || 'Sin turno';
           h += `<div class="group-page">
                   <div class="header">
                     <h2>${g.name}</h2>
                     <p class="header-info">
-                      <b>Docente:</b> ${g.teacher || 'Sin asignar'} &nbsp;|&nbsp; 
-                      <b>Auxiliar/Preceptora:</b> ${g.aux || 'Sin asignar'} &nbsp;|&nbsp; 
+                      <b>Docente:</b> ${g.staffByRole?.find(item => item.roleId === docenteRole.id)?.name || 'Sin asignar'} &nbsp;|&nbsp; 
+                      <b>Equipo:</b> ${g.staffByRole?.filter(item => item.roleId !== docenteRole.id).map(item => `${item.roleName}: ${item.name}`).join(' · ') || 'Sin otros roles'} &nbsp;|&nbsp; 
                       <b>Turno:</b> ${turnoTexto}
                     </p>
                   </div>
@@ -330,7 +437,7 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
                       </tr>
                     </thead>
                     <tbody>`;
-          g.students.sort((a,b)=>a.lastName.localeCompare(b.lastName)).forEach((s, i) => {
+          [...g.students].sort((a,b)=>(a.lastName||'').localeCompare(b.lastName||'')).forEach((s, i) => {
               const fotoHTML = s.photoUrl 
                 ? `<img src="${s.photoUrl}" class="foto-print" />` 
                 : `<div class="foto-print" style="line-height:32px; color:#aaa; text-align:center; font-size:13px; font-weight:bold;">${s.firstName[0]}</div>`;
@@ -380,38 +487,109 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
     } catch (e) { console.error(e); }
   };
 
-  const handleUpdateGroup = async (e) => {
-    e.preventDefault(); 
-    if (!editingGroup) return; 
+  const openCreateGroup = () => {
+    setStaffSelections({});
+    setEditingGroup({
+      isNew: true,
+      name: '',
+      siteId: '',
+      levelId: '',
+      sectionId: '',
+      turnIds: turnOptions[0] ? [turnOptions[0].id] : [],
+      scheduleType: 'simple',
+      enabledRoles: normalizeRoles([docenteRole.id]),
+      classroom: '',
+      driveLink: '',
+      institucionalDrive: ''
+    });
+  };
+
+  const openEditGroup = async (group) => {
     setUpdatingGroup(true);
-    const fd = new FormData(e.target);
-    const suf = turn === 'morning' ? 'Morning' : 'Afternoon';
-    
-    const updates = { 
-      [`group${suf}`]: fd.get('groupName'), 
-      classroom: fd.get('classroom'),
-      [`teacher${suf}`]: fd.get('teacher') || editingGroup.teacher || "",
-      [`teacher2${suf}`]: fd.get('teacher2') || editingGroup.teacher2 || "",
-      [`aux${suf}`]: fd.get('aux') || editingGroup.aux || "",
-      
-      profePlastica: fd.get('profePlastica') || editingGroup.profePlastica || "",
-      profeMusica: fd.get('profeMusica') || editingGroup.profeMusica || "",
-      profeEF: fd.get('profeEF') || editingGroup.profeEF || "",
-      profePsico: fd.get('profePsico') || editingGroup.profePsico || "",
-      
-      [`driveLink${suf}`]: fd.get('driveLink') || editingGroup.driveLink || "",
-      institucionalDrive: fd.get('institucionalDrive') || editingGroup.institucionalDrive || ""
-    };
-    
     try {
-      const promises = editingGroup.students.map(s => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', s.id), updates));
-      await Promise.all(promises);
+      const assignments = await getStaffGroupAssignmentsForGroup(db, appId, group.id);
+      const selections = {};
+      assignments
+        .filter(item => item.status !== 'closed' && !item.validTo)
+        .forEach(item => { selections[item.roleId] = item.staffId; });
+      setStaffSelections(selections);
+      setEditingGroup({
+        ...group,
+        enabledRoles: normalizeRoles(group.enabledRoles),
+        turnIds: Array.isArray(group.turnIds) ? group.turnIds : (group.turnId ? [group.turnId] : [])
+      });
+    } catch (error) {
+      console.error(error);
+      alert(`No se pudo abrir el grupo: ${error.message}`);
+    } finally {
+      setUpdatingGroup(false);
+    }
+  };
+
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    if (!editingGroup) return;
+    setUpdatingGroup(true);
+
+    try {
+      const form = new FormData(e.currentTarget);
+      const name = String(form.get('groupName') || '').trim();
+      if (!name) throw new Error('El grupo necesita un nombre.');
+
+      const turnIds = form.getAll('turnId');
+      const enabledRoles = normalizeRoles(form.getAll('roleId'));
+      const groupData = {
+        name,
+        siteId: String(form.get('siteId') || '').trim() || null,
+        levelId: String(form.get('levelId') || '').trim() || null,
+        sectionId: String(form.get('sectionId') || '').trim() || null,
+        turnIds,
+        scheduleType: form.get('scheduleType') || 'simple',
+        enabledRoles,
+        classroom: String(form.get('classroom') || '').trim(),
+        driveLink: String(form.get('driveLink') || '').trim(),
+        institucionalDrive: String(form.get('institucionalDrive') || '').trim(),
+        active: true
+      };
+
+      const groupId = editingGroup.isNew
+        ? await createGroup(db, appId, groupData)
+        : editingGroup.id;
+
+      if (!editingGroup.isNew) {
+        await updateGroup(db, appId, groupId, groupData);
+      }
+
+      const previous = editingGroup.isNew ? [] : await getStaffGroupAssignmentsForGroup(db, appId, groupId);
+      const activeByRole = previous.filter(item => item.status !== 'closed' && !item.validTo);
+
+      for (const role of roleOptions) {
+        const oldAssignment = activeByRole.find(item => item.roleId === role.id);
+        const selectedStaffId = enabledRoles.includes(role.id) ? (staffSelections[role.id] || '') : '';
+
+        if (oldAssignment?.staffId === selectedStaffId) continue;
+
+        if (oldAssignment) {
+          await closeStaffGroupAssignment(db, appId, oldAssignment.id);
+        }
+
+        if (selectedStaffId) {
+          await createStaffGroupAssignment(db, appId, {
+            staffId: selectedStaffId,
+            groupId,
+            roleId: role.id,
+            turnIds
+          });
+        }
+      }
+
       setEditingGroup(null);
-      alert("✅ Datos del grupo actualizados.");
-    } catch (err) { 
-      alert("Error: " + err.message); 
-    } finally { 
-      setUpdatingGroup(false); 
+      setStaffSelections({});
+    } catch (error) {
+      console.error(error);
+      alert(`No se pudo guardar el grupo: ${error.message}`);
+    } finally {
+      setUpdatingGroup(false);
     }
   };
 
@@ -498,17 +676,18 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
     }
   };
   
-  const handleAddGroupComment = async (e, groupName) => {
+  const handleAddGroupComment = async (e, group) => {
     e.preventDefault();
     const text = e.target.comment.value;
     if (!text.trim()) return;
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'group_mural'), { 
-        groupName, 
-        text, 
-        author: user.firstName, 
-        authorId: user.id, 
-        createdAt: serverTimestamp() 
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'group_mural'), {
+        groupId: group.id,
+        groupName: group.name,
+        text,
+        author: user.firstName,
+        authorId: user.id,
+        createdAt: serverTimestamp()
       });
 
       e.target.reset();
@@ -526,38 +705,26 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-8">Vista Institucional</p>
           </div>
 
-          {/* CONTENEDOR DE BOTONES SUPERIOR DERECHA */}
           <div className="flex items-center gap-2">
-         {isManagement && (
-  <button 
-    onClick={exportGroupsToExcel}
-    title="Descargar Excel"
-    className="bg-emerald-100 text-emerald-700 p-2.5 rounded-xl hover:bg-emerald-200 transition shadow-sm flex items-center justify-center gap-1.5 px-3 font-black text-xs uppercase cursor-pointer"
-  >
-    <Download size={20}/>
-    <span>Excel</span>
-  </button>
-)}
-
-            <button 
-              onClick={() => { setGroupsToPrint(gruposFinales); setShowPrintOptions(true); }} 
-              className="bg-violet-100 text-violet-700 p-2.5 rounded-xl hover:bg-violet-200 transition shadow-sm cursor-pointer"
-              title="Imprimir"
-            >
-              <Printer size={24}/>
+            {isManagement && (
+              <button onClick={openCreateGroup} className="bg-violet-600 text-white px-4 py-2.5 rounded-xl hover:bg-violet-700 transition shadow-sm flex items-center gap-2 font-black text-xs">
+                <Plus size={16}/> Nuevo grupo
+              </button>
+            )}
+            <button onClick={() => { setGroupsToPrint(gruposFinales); setShowPrintOptions(true); }} className="bg-slate-100 text-slate-700 p-2.5 rounded-xl hover:bg-slate-200 transition shadow-sm" title="Imprimir">
+              <Printer size={22}/>
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-2 mx-2">
-          <div className="flex bg-gray-100 p-1 rounded-2xl flex-1">
-            <button onClick={() => setTurn('morning')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${turn === 'morning' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-400'}`}>☀️ MAÑANA</button>
-            <button onClick={() => setTurn('afternoon')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${turn === 'afternoon' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>🌙 TARDE</button>
-          </div>
-
-          <div className="flex bg-gray-200 p-1 rounded-2xl">
-            <button onClick={() => setViewMode('Sede')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${viewMode === 'Sede' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}>Sede</button>
-            <button onClick={() => setViewMode('Inclusión')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${viewMode === 'Inclusión' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}>Inclusión</button>
+        <div className="flex items-center gap-2 mx-2 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl shrink-0">
+            <button onClick={() => setSelectedTurnId('all')} className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase ${selectedTurnId === 'all' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400'}`}>Todos</button>
+            {turnOptions.map(turnOption => (
+              <button key={turnOption.id} onClick={() => setSelectedTurnId(turnOption.id)} className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase whitespace-nowrap ${selectedTurnId === turnOption.id ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400'}`}>
+                {turnOption.name}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -575,13 +742,22 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
           className="h-full w-full overflow-x-auto flex gap-6 p-6 scroll-smooth no-scrollbar items-start"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {gruposFinales.map((g) => (
-            <div key={g.name} className="flex flex-col min-w-[340px] bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden h-fit mb-10">
-              <div className={`p-6 border-b-4 relative ${turn === 'morning' ? 'border-orange-400 bg-orange-50/50' : 'border-indigo-400 bg-indigo-50/50'}`}>
+          {gruposFinales.length === 0 ? (
+            <div className="w-full min-h-[360px] flex items-center justify-center">
+              <div className="max-w-md text-center bg-white border border-slate-200 rounded-[32px] p-10 shadow-sm">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center mb-5"><UsersRound size={30}/></div>
+                <h3 className="text-lg font-black text-slate-800">Todavía no hay grupos</h3>
+                <p className="text-sm text-slate-400 mt-2">Los grupos se crean desde esta sección. Después, los estudiantes se asignan desde Legajos.</p>
+                {isManagement && <button onClick={openCreateGroup} className="mt-5 inline-flex items-center gap-2 px-4 py-3 bg-violet-600 text-white rounded-xl font-black text-xs"><Plus size={16}/> Crear primer grupo</button>}
+              </div>
+            </div>
+          ) : gruposFinales.map((g) => (
+            <div key={g.id} className="flex flex-col min-w-[340px] bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden h-fit mb-10">
+              <div className="p-6 border-b border-slate-100 relative bg-white">
                 <div className="absolute top-4 right-4 flex gap-1">
                   <button onClick={() => { setGroupsToPrint([g]); setShowPrintOptions(true); }} className="p-2 bg-white/80 hover:bg-white rounded-full text-violet-600 shadow-sm transition"><Printer size={14}/></button>
                   <button onClick={() => setSelectedGroupDetails(g)} className="p-2 bg-violet-600 text-white rounded-full shadow-lg hover:scale-110 transition"><Plus size={16}/></button>
-                  {isManagement && <button onClick={()=>setEditingGroup(g)} className="p-2 bg-white/80 hover:bg-white rounded-full text-slate-400 shadow-sm transition"><Edit3 size={14}/></button>}
+                  {isManagement && <button onClick={() => openEditGroup(g)} className="p-2 bg-white/80 hover:bg-white rounded-full text-slate-400 shadow-sm transition"><Edit3 size={14}/></button>}
                 </div>
                 
                 <h3 className="font-black text-slate-800 text-xl leading-tight pr-16 uppercase">{g.name}</h3>
@@ -589,35 +765,41 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                 <div className="flex flex-col gap-2 mt-3">
                   <div className="flex flex-wrap gap-2">
                     <span className="bg-white text-violet-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase shadow-sm border border-violet-100">
-                      {g.students.length} {viewMode === 'Sede' ? 'Alumnxs' : 'Integradxs'}
+                      {g.students.length} {g.students.length === 1 ? 'estudiante' : 'estudiantes'}
                     </span>
+                    {g.turnLabels?.length > 0 && (
+                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg text-[9px] font-black border border-slate-200 uppercase">
+                        {g.turnLabels.join(' · ')}
+                      </span>
+                    )}
                     {g.classroom && (
                       <span className="bg-white text-orange-700 px-2 py-1 rounded-lg text-[9px] font-black border border-orange-100 uppercase">
-                        {viewMode === 'Sede' ? `Aula ${g.classroom}` : `Grado: ${g.classroom}`}
+                        {g.classroom}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1 bg-slate-100/60 p-1.5 rounded-xl border border-slate-200/40">
-                    {g.stats?.varones > 0 && <span className="text-[9px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded-md">👦 {g.stats.varones}V</span>}
-                    {g.stats?.mujeres > 0 && <span className="text-[9px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded-md">👧 {g.stats.mujeres}M</span>}
-                    {g.stats?.conDI > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">DI: {g.stats.conDI}</span>}
-                    {g.stats?.conTEA > 0 && <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100">TES: {g.stats.conTEA}</span>}
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Equipo del grupo</p>
+                    <div className="space-y-1.5">
+                      {g.enabledRoles.map(roleId => {
+                        const assignment = g.staffByRole.find(item => item.roleId === roleId);
+                        return (
+                          <div key={roleId} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                            <span className="text-[9px] font-black uppercase text-slate-400">{getRoleLabel(roleId)}</span>
+                            <span className={`text-[10px] font-black ${assignment?.name ? 'text-slate-700' : 'text-slate-300'}`}>
+                              {assignment?.name || 'Sin asignar'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/50 space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                    {viewMode === 'Sede' ? 'DOC:' : 'DAI:'} <span className="text-slate-700 font-black">{g.teacher || 'Sin asignar'}</span>
-                  </p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                    {viewMode === 'Sede' ? 'AUX:' : 'ESCUELA:'} <span className="text-slate-700 font-black">{g.aux || 'S/D'}</span>
-                  </p>
                 </div>
               </div>
 
               <div className="p-4 bg-slate-50/30 space-y-2 h-fit">
-                {g.students.sort((a,b)=>a.lastName.localeCompare(b.lastName)).map(s => (
+                {[...g.students].sort((a,b)=>(a.lastName||'').localeCompare(b.lastName||'')).map(s => (
                   <div key={s.id} onClick={() => setSelectedStudent(s)} className="bg-white p-3 rounded-[24px] shadow-sm flex items-center justify-between cursor-pointer border-2 border-transparent hover:border-violet-200 transition-all group/item">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-400 border border-slate-200 text-sm overflow-hidden shadow-inner shrink-0">
@@ -745,8 +927,8 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                         </div>
                         <div className="mt-4 p-3 bg-white/5 rounded-2xl border border-white/10">
                           <p className="text-[9px] font-black text-indigo-300 uppercase mb-2">Responsables de Aula</p>
-                          <p className="text-[10px] font-bold mb-1">TM: <span className="text-white">{fullFileStudent.teacherMorning || '-'}</span></p>
-                          <p className="text-[10px] font-bold">TT: <span className="text-white">{fullFileStudent.teacherAfternoon || '-'}</span></p>
+                          <p className="text-[10px] font-bold mb-1">Grupo: <span className="text-white">{fullFileStudent.currentGroupName || '-'}</span></p>
+                          <p className="text-[10px] font-bold">Turno: <span className="text-white">{fullFileStudent.currentTurnLabel || '-'}</span></p>
                         </div>
                       </div>
                     </section>
@@ -756,7 +938,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                         <MessageSquare size={12}/> Últimas novedades del grupo
                       </p>
                       <div className="space-y-2 max-h-32 overflow-y-auto no-scrollbar">
-                        {groupMessages[viewMode === 'Sede' ? (fullFileStudent[`group${turn === 'morning' ? 'Morning' : 'Afternoon'}`]) : (fullFileStudent[`dai${turn === 'morning' ? 'Morning' : 'Afternoon'}`])]?.slice(0, 3).map(m => (
+                        {(groupMessages[fullFileStudent.currentGroupId || fullFileStudent.currentGroupName] || []).slice(0, 3).map(m => (
                           <div key={m.id} className="bg-white p-2 rounded-xl shadow-sm border border-orange-50">
                             <p className="text-[8px] font-bold text-slate-400 uppercase">{m.author}</p>
                             <p className="text-[10px] text-slate-600 leading-tight">{m.text}</p>
@@ -962,7 +1144,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 lg:p-8 flex flex-col-reverse space-y-4 custom-scrollbar z-10">
-                    {(!groupMessages[selectedGroupDetails.name] || groupMessages[selectedGroupDetails.name].length === 0) ? (
+                    {(!groupMessages[selectedGroupDetails.id] && !groupMessages[selectedGroupDetails.name]) || ((groupMessages[selectedGroupDetails.id] || groupMessages[selectedGroupDetails.name] || []).length === 0) ? (
                       <div className="flex-1 flex flex-col items-center justify-center text-center p-10 animate-pulse">
                         <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mb-4">
                           <Send size={30} className="text-slate-400" />
@@ -971,7 +1153,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                         <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase">¡Escribí la primera novedad del grupo!</p>
                       </div>
                     ) : (
-                      groupMessages[selectedGroupDetails.name].map(m => (
+                      (groupMessages[selectedGroupDetails.id] || groupMessages[selectedGroupDetails.name] || []).map(m => (
                         <div key={m.id} className={`flex flex-col ${m.authorId === user.id ? 'items-end' : 'items-start'}`}>
                           <div className={`max-w-[90%] lg:max-w-[70%] p-4 rounded-[28px] shadow-sm relative group ${
                             m.authorId === user.id 
@@ -989,7 +1171,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                 </div>
 
                 <div className="p-4 lg:p-6 bg-white border-t-2 border-slate-100 z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-                  <form onSubmit={(e) => handleAddGroupComment(e, selectedGroupDetails.name)} className="max-w-4xl mx-auto flex gap-2">
+                  <form onSubmit={(e) => handleAddGroupComment(e, selectedGroupDetails)} className="max-w-4xl mx-auto flex gap-2">
                     <input 
                       name="comment" 
                       autoComplete="off" 
@@ -1008,103 +1190,71 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
 
       {editingGroup && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[600] flex items-center justify-center p-4">
-          <form onSubmit={handleUpdateGroup} className="bg-white rounded-[40px] w-full max-w-sm p-8 shadow-2xl border-t-8 border-violet-600 max-h-[90vh] overflow-y-auto no-scrollbar">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-black text-violet-900 uppercase italic">Editar Grupo</h3>
-              <button type="button" onClick={() => setEditingGroup(null)}><X size={20}/></button>
+          <form onSubmit={handleUpdateGroup} className="bg-white rounded-[32px] w-full max-w-2xl p-6 lg:p-8 shadow-2xl max-h-[92vh] overflow-y-auto no-scrollbar">
+            <div className="flex justify-between items-start gap-4 mb-6">
+              <div>
+                <p className="text-[10px] font-black text-violet-500 uppercase tracking-[0.2em]">Estructura institucional</p>
+                <h3 className="text-2xl font-black text-slate-900 mt-1">{editingGroup.isNew ? 'Crear grupo' : 'Editar grupo'}</h3>
+                <p className="text-xs text-slate-400 mt-1">El grupo existe independientemente de los estudiantes. Las personas se asignan por rol.</p>
+              </div>
+              <button type="button" onClick={() => { setEditingGroup(null); setStaffSelections({}); }} className="p-2 rounded-full bg-slate-100 text-slate-400 hover:text-red-500"><X size={20}/></button>
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Nombre Grupo</label>
-                <input name="groupName" defaultValue={editingGroup.name} className="w-full p-3 bg-slate-50 rounded-xl font-black text-sm uppercase outline-none border-b-2 border-violet-200" />
-              </div>
-              
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Aula Física</label>
-                <input name="classroom" defaultValue={editingGroup.classroom || ""} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none" />
-              </div>
 
-              <datalist id="lista-personal">
-                {usersList.map(u => (
-                  <option key={u.id} value={u.fullName} />
-                ))}
-              </datalist>
+            <div className="grid md:grid-cols-2 gap-4">
+              <label className="block md:col-span-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre del grupo</span><input name="groupName" defaultValue={editingGroup.name || ''} required className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-black text-sm outline-none border border-slate-200" placeholder="Ej.: Grupo Azul" /></label>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nivel</span><input name="levelId" defaultValue={editingGroup.levelId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Nivel" /></label>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sección</span><input name="sectionId" defaultValue={editingGroup.sectionId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Sección" /></label>
+              <label className="block md:col-span-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sede</span><input name="siteId" defaultValue={editingGroup.siteId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Sede" /></label>
 
-              <div>
-                <label className="text-[10px] font-black text-violet-600 uppercase ml-1 tracking-widest">Docente Titular</label>
-                <input 
-                  name="teacher" 
-                  list="lista-personal"
-                  placeholder="Escribí para buscar..."
-                  autoComplete="off"
-                  defaultValue={editingGroup.teacher || ""} 
-                  className="w-full p-3 bg-violet-50 rounded-xl font-bold text-xs uppercase outline-none border border-violet-100"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-violet-400 uppercase ml-1 tracking-widest">Docente Pareja</label>
-                <input 
-                  name="teacher2" 
-                  list="lista-personal"
-                  placeholder="Escribí para buscar..."
-                  autoComplete="off"
-                  defaultValue={editingGroup.teacher2 || ""} 
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold text-xs uppercase outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-orange-600 uppercase ml-1 tracking-widest">Auxiliar / Preceptor</label>
-                <input 
-                  name="aux" 
-                  list="lista-personal"
-                  placeholder="Escribí para buscar..."
-                  autoComplete="off"
-                  defaultValue={editingGroup.aux || ""} 
-                  className="w-full p-3 bg-orange-50 rounded-xl font-bold text-xs uppercase outline-none border border-orange-100"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-violet-600 uppercase">Profesores Especiales</label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {[
-                    { name: 'profePlastica', label: 'Plástica' },
-                    { name: 'profeMusica', label: 'Música' },
-                    { name: 'profeEF', label: 'Ed. Física' },
-                    { name: 'profePsico', label: 'Psicomotricidad' }
-                  ].map((esp) => (
-                    <input 
-                      key={esp.name} 
-                      name={esp.name} 
-                      list="lista-personal"
-                      placeholder={`Buscar ${esp.label}...`}
-                      autoComplete="off"
-                      defaultValue={editingGroup[esp.name] || ""} 
-                      className="p-2 bg-gray-50 rounded-lg text-xs font-bold border outline-none w-full"
-                    />
+              <div className="md:col-span-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Turnos configurados</span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {turnOptions.map(turnOption => (
+                    <label key={turnOption.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                      <input type="checkbox" name="turnId" value={turnOption.id} defaultChecked={(editingGroup.turnIds || []).includes(turnOption.id)} className="accent-violet-600" />
+                      <span className="text-xs font-bold text-slate-600">{turnOption.name}</span>
+                    </label>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-black text-emerald-600 uppercase ml-1 tracking-widest">Link Carpeta Fotos</label>
-                <input name="driveLink" defaultValue={editingGroup.driveLink || ""} className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs font-bold text-emerald-800 outline-none" />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-blue-600 uppercase ml-1 tracking-widest">Drive Institucional</label>
-                <input name="institucionalDrive" defaultValue={editingGroup.institucionalDrive || ""} className="w-full p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs font-bold text-blue-800 outline-none" />
-              </div>
-
-              <button type="submit" disabled={updatingGroup} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-black shadow-lg uppercase text-xs mt-4 hover:scale-[1.02] transition-all">
-                {updatingGroup ? "Guardando..." : "Aplicar Cambios en todo el Grupo"}
-              </button>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jornada</span><select name="scheduleType" defaultValue={editingGroup.scheduleType || 'simple'} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200"><option value="simple">Jornada simple</option><option value="double">Doble jornada</option></select></label>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aula / Espacio</span><input name="classroom" defaultValue={editingGroup.classroom || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" /></label>
             </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2 mb-3"><Settings2 size={16} className="text-violet-500"/><h4 className="text-sm font-black text-slate-800">Roles habilitados</h4></div>
+              <p className="text-xs text-slate-400 mb-4">Los roles salen de Configuración. Docente es obligatorio por defecto.</p>
+              <div className="grid md:grid-cols-2 gap-2">
+                {roleOptions.map(role => {
+                  const checked = normalizeRoles(editingGroup.enabledRoles || []).includes(role.id);
+                  const required = role.id === docenteRole.id || role.requiredForGroup;
+                  return <label key={role.id} className={`flex items-center justify-between p-3 rounded-xl border ${checked ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50'}`}><span className="flex items-center gap-2"><input type="checkbox" name="roleId" value={role.id} defaultChecked={checked} disabled={required} className="accent-violet-600"/><span className="text-xs font-black text-slate-700">{role.name}</span></span>{required && <span className="text-[8px] font-black uppercase text-violet-500">Obligatorio</span>}</label>;
+                })}
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-2 mb-3"><UserPlus size={16} className="text-violet-500"/><h4 className="text-sm font-black text-slate-800">Personal asignado</h4></div>
+              <div className="space-y-2">
+                {normalizeRoles(editingGroup.enabledRoles || []).map(roleId => (
+                  <div key={roleId} className="grid grid-cols-[1fr_1.5fr] items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-black uppercase text-slate-500">{getRoleLabel(roleId)}</span>
+                    <select value={staffSelections[roleId] || ''} onChange={e => setStaffSelections(prev => ({ ...prev, [roleId]: e.target.value }))} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 outline-none"><option value="">Sin asignar</option>{staffList.slice().sort((a,b)=>(a.fullName||'').localeCompare(b.fullName||'')).map(person => <option key={person.id} value={person.id}>{person.fullName || `${person.lastName || ''}, ${person.firstName || ''}`}</option>)}</select>
+                  </div>
+                ))}
+              </div>
+              {staffList.length === 0 && <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">Todavía no hay personal cargado. El grupo puede crearse igual.</div>}
+            </div>
+
+            <div className="mt-6 grid md:grid-cols-2 gap-3">
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Carpeta de fotos</span><input name="driveLink" defaultValue={editingGroup.driveLink || ''} className="mt-1 w-full p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-xs font-bold" /></label>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Drive institucional</span><input name="institucionalDrive" defaultValue={editingGroup.institucionalDrive || ''} className="mt-1 w-full p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs font-bold" /></label>
+            </div>
+
+            <div className="flex gap-3 mt-8"><button type="button" onClick={() => { setEditingGroup(null); setStaffSelections({}); }} className="flex-1 py-3.5 bg-slate-100 text-slate-500 rounded-xl font-black uppercase text-xs">Cancelar</button><button type="submit" disabled={updatingGroup} className="flex-[2] py-3.5 bg-violet-600 text-white rounded-xl font-black uppercase text-xs shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"><Save size={16}/>{updatingGroup ? 'Guardando…' : editingGroup.isNew ? 'Crear grupo' : 'Guardar cambios'}</button></div>
           </form>
-        </div> 
+        </div>
       )}
 
       {showPrintOptions && (
