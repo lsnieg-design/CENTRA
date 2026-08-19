@@ -536,8 +536,6 @@ return (
           )}
         </section>
       )}
-    </div>
-  )
 
       {showBirthdayModal && (
         <div className="fixed inset-0 bg-slate-900/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-md" onClick={() => setShowBirthdayModal(false)}>
