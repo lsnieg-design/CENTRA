@@ -379,39 +379,8 @@ function InitialAdminScreen({ onCreated }) {
         completeProfile
       );
 
-const initialization =
-  await initializeCENTRAInstallation({
-    db,
-    appId,
-    authUser: credential.user,
-    adminProfile: profile
-  });
 
-const completeProfile = {
-  ...profile,
-  id: credential.user.uid,
-  personId: initialization.personId,
-  architectureVersion:
-    initialization.architectureVersion
-};
 
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'users', credential.user.uid),
-        profile,
-        { merge: true }
-      );
-
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'config', 'institution'),
-        { installationComplete: true, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-
-   
-
-      localStorage.setItem(INSTALLATION_COMPLETE_KEY, 'true');
-      localStorage.setItem('schoolApp_profile', JSON.stringify(completeProfile));
-      onCreated(completeProfile);
     } catch (error) {
       console.error('Initial admin error:', error);
 
