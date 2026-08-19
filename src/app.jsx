@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GroupsView } from './views/GroupsView';
 import { PersonalView } from './views/PersonalView';
+import { initializeCENTRAInstallation } from './data/initializeCENTRA';
 import { DashboardView } from './views/DashboardView';
 import { ResourcesView } from './views/ResourcesView';
 import { TasksView } from './views/TasksView';
@@ -320,18 +321,37 @@ function InitialAdminScreen({ onCreated }) {
       }
 
       const profile = {
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        fullName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-        email,
-        username: email,
-        role: 'Equipo Directivo',
-        rol: 'admin',
-        isAdmin: true,
-        authUid: credential.user.uid,
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp()
-      };
+  firstName: form.firstName.trim(),
+  lastName: form.lastName.trim(),
+  fullName:
+    `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+  email,
+  username: email,
+  role: 'Equipo Directivo',
+  rol: 'admin',
+  accessRoleId: 'admin',
+  isAdmin: true,
+  authUid: credential.user.uid,
+  personId: credential.user.uid,
+  createdAt: serverTimestamp(),
+  lastLogin: serverTimestamp()
+};
+
+const initialization =
+  await initializeCENTRAInstallation({
+    db,
+    appId,
+    authUser: credential.user,
+    adminProfile: profile
+  });
+
+const completeProfile = {
+  ...profile,
+  id: credential.user.uid,
+  personId: initialization.personId,
+  architectureVersion:
+    initialization.architectureVersion
+};
 
       await setDoc(
         doc(db, 'artifacts', appId, 'public', 'data', 'users', credential.user.uid),
