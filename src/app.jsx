@@ -833,7 +833,7 @@ function MainApp({ user, onLogout }) {
         {activeTab === 'informes' && hasModule('informes') && appConfig.features.reports !== false && (<InformesView user={user} students={students} db={db} appId={appId} />)}
         {activeTab === 'informes_externos' && hasModule('informes_externos') && appConfig.features.externalReports !== false && canAccessInformesExternos && (<InformesExternosView user={user} db={db} appId={appId} />)}
         {activeTab === 'audit' && hasModule('audit') && isSuperAdmin && db && (<ActivityLogView db={db} appId={appId} />)}
-        {activeTab === 'configuracion' && hasModule('configuracion') && isSuperAdmin && db && (<ConfiguracionView db={db} appId={appId} />)}
+        {activeTab === 'configuracion' && hasModule('configuracion') && isSuperAdmin && db && (<ConfiguracionView db={db} appId={appId} auth={auth} />)}
       </main>
 
       <nav className="fixed bottom-0 w-full bg-white border-t border-violet-100 h-16 z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe shrink-0 text-center">
