@@ -117,6 +117,40 @@ export const DEFAULT_APP_CONFIG = {
     'CUMPLEAÑOS'
   ],
 
+  // Configuración visual de los tipos de evento.
+  // eventTypes sigue siendo una lista de IDs para no romper
+  // las secciones que todavía trabajan con strings.
+  eventTypeSettings: {
+    GENERAL: {
+      name: 'General',
+      color: '#64748b'
+    },
+    ADMINISTRATIVO: {
+      name: 'Administrativo',
+      color: '#f59e0b'
+    },
+    INFORMES: {
+      name: 'Informes',
+      color: '#3b82f6'
+    },
+    EVENTOS: {
+      name: 'Eventos',
+      color: '#8b5cf6'
+    },
+    ACTOS: {
+      name: 'Actos',
+      color: '#f97316'
+    },
+    EFEMÉRIDES: {
+      name: 'Efemérides',
+      color: '#06b6d4'
+    },
+    CUMPLEAÑOS: {
+      name: 'Cumpleaños',
+      color: '#ec4899'
+    }
+  },
+
   roles: [
     'Docente',
     'Equipo Directivo',
@@ -816,9 +850,14 @@ export function normalizeAppConfig(
       ...(value.installation || {})
     },
 
-    taskSettings: {
+     taskSettings: {
       ...DEFAULT_APP_CONFIG.taskSettings,
       ...(value.taskSettings || {})
+    },
+
+    eventTypeSettings: {
+      ...DEFAULT_APP_CONFIG.eventTypeSettings,
+      ...(value.eventTypeSettings || {})
     }
 
   };
@@ -870,7 +909,49 @@ export function normalizeAppConfig(
       DEFAULT_APP_CONFIG.taskSettings.types;
 
   }
+  // ----------------------------------------------------------
+  // TIPOS DE EVENTO
+  // ----------------------------------------------------------
 
+  const defaultEventColors = [
+    '#64748b',
+    '#f59e0b',
+    '#3b82f6',
+    '#8b5cf6',
+    '#f97316',
+    '#06b6d4',
+    '#ec4899',
+    '#22c55e',
+    '#ef4444',
+    '#14b8a6'
+  ];
+
+  const normalizedEventTypeSettings = {
+    ...DEFAULT_APP_CONFIG.eventTypeSettings,
+    ...(merged.eventTypeSettings || {})
+  };
+
+  (merged.eventTypes || []).forEach(
+    (type, index) => {
+      const id = String(type);
+
+      if (!normalizedEventTypeSettings[id]) {
+        normalizedEventTypeSettings[id] = {
+          name: id
+            .toLowerCase()
+            .replaceAll('_', ' ')
+            .replace(/\b\w/g, char => char.toUpperCase()),
+          color:
+            defaultEventColors[
+              index % defaultEventColors.length
+            ]
+        };
+      }
+    }
+  );
+
+  merged.eventTypeSettings =
+    normalizedEventTypeSettings;
 
   // ----------------------------------------------------------
   // TIPOS DE ASIGNACIÓN
@@ -1041,7 +1122,40 @@ export function normalizeAppConfig(
 
   return merged;
 }
+// =============================================================
+// TIPOS DE EVENTO
+// =============================================================
 
+export function getEventTypeConfig(config, type) {
+  const normalized = normalizeAppConfig(config);
+
+  const fallbackName = String(type || 'GENERAL')
+    .toLowerCase()
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+
+  return (
+    normalized.eventTypeSettings?.[type] || {
+      name: fallbackName,
+      color: '#64748b'
+    }
+  );
+}
+
+export function getEventTypesConfig(config) {
+  const normalized = normalizeAppConfig(config);
+
+  return (normalized.eventTypes || []).map(type => ({
+    id: type,
+    ...(normalized.eventTypeSettings?.[type] || {
+      name: String(type)
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, char => char.toUpperCase()),
+      color: '#64748b'
+    })
+  }));
+}
 
 // =============================================================
 // CONFIGURACIÓN LOCAL
