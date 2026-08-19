@@ -14,43 +14,41 @@ import {
   collection, query, where, onSnapshot, orderBy, limit, 
   doc, updateDoc, deleteDoc, addDoc, serverTimestamp, getDocs 
 } from 'firebase/firestore';
+import { getCachedAppConfig, isModuleEnabled } from '../config';
 
-// Función para calcular días hábiles (excluyendo findes y feriados ARG 2026)
-const calculateBusinessDaysLeft = (dateString) => {
+// Calcula días hábiles usando los días no laborables configurados por la institución.
+const calculateBusinessDaysLeft = (dateString, holidays = []) => {
   if (!dateString) return 0;
-  
-  const FERIADOS_ARG_2026 = [
-    '2026-01-01', '2026-02-16', '2026-02-17', '2026-03-23', '2026-03-24',
-    '2026-04-02', '2026-04-03', '2026-05-01', '2026-05-25', '2026-06-15',
-    '2026-07-09', '2026-07-10', '2026-08-17', '2026-10-12', '2026-11-23',
-    '2026-12-07', '2026-12-08', '2026-12-25'
-  ];
 
-  const targetDate = new Date(dateString + 'T00:00:00');
-  let currentDate = new Date();
-  currentDate.setHours(0,0,0,0);
-  targetDate.setHours(0,0,0,0);
+  const targetDate = new Date(`${dateString}T00:00:00`);
+  const currentDate = new Date();
+  currentDate.setHours(0, 0, 0, 0);
+  targetDate.setHours(0, 0, 0, 0);
 
-  if (targetDate <= currentDate) return 0;
+  if (Number.isNaN(targetDate.getTime()) || targetDate <= currentDate) {
+    return 0;
+  }
+
+  const holidayDates = new Set(
+    (holidays || []).map(value => String(value).split('|')[0])
+  );
 
   let businessDays = 0;
-  let tempDate = new Date(currentDate);
-  
+  const tempDate = new Date(currentDate);
+
   while (tempDate < targetDate) {
     tempDate.setDate(tempDate.getDate() + 1);
     const dayOfWeek = tempDate.getDay();
-    
-    // Si no es Domingo (0) ni Sábado (6)
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      const yyyy = tempDate.getFullYear();
-      const mm = String(tempDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(tempDate.getDate()).padStart(2, '0');
-      const formattedDate = `${yyyy}-${mm}-${dd}`;
-      
-      // Si no es feriado, es día hábil
-      if (!FERIADOS_ARG_2026.includes(formattedDate)) {
-        businessDays++;
-      }
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+    const yyyy = tempDate.getFullYear();
+    const mm = String(tempDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(tempDate.getDate()).padStart(2, '0');
+    const formattedDate = `${yyyy}-${mm}-${dd}`;
+
+    if (!holidayDates.has(formattedDate)) {
+      businessDays++;
     }
   }
 
@@ -58,7 +56,12 @@ const calculateBusinessDaysLeft = (dateString) => {
 };
 
 export function DashboardView({ user, db, appId, setActiveTab, tasks = [], events = [], announcements = [] }) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0')
+  ].join('-');
   const todayEvents = events.filter(e => e.date === todayStr);
   const [students, setStudents] = useState([]);
   const [showAnnounceModal, setShowAnnounceModal] = useState(false);
@@ -71,8 +74,10 @@ export function DashboardView({ user, db, appId, setActiveTab, tasks = [], event
   
   const [studentBirthdays, setStudentBirthdays] = useState([]);
   const [staffBirthdays, setStaffBirthdays] = useState([]);
-  const [tutorialTab, setTutorialTab] = useState('inicio'); 
-  
+  const [tutorialTab, setTutorialTab] = useState('inicio');
+  const appConfig = getCachedAppConfig();
+  const moduleEnabled = (moduleId) => isModuleEnabled(appConfig, moduleId);
+
   // ESTADOS CUENTA REGRESIVA
   const [countdown, setCountdown] = useState({ title: "Vacaciones", date: "", daysLeft: 0 });
   const [countdownDocId, setCountdownDocId] = useState(null);
@@ -135,13 +140,13 @@ export function DashboardView({ user, db, appId, setActiveTab, tasks = [], event
             if (docSnap) {
                 setCountdownDocId(docSnap.id);
                 const data = docSnap.data();
-                const diffDays = calculateBusinessDaysLeft(data.date);
+                const diffDays = calculateBusinessDaysLeft(data.date, appConfig.holidays);
                 setCountdown({ title: data.title || '', date: data.date, daysLeft: diffDays > 0 ? diffDays : 0 });
             }
         }
     });
 
-    return () => { unsubNotes(); unsubUsers(); unsubSettings(); unsubStudents(); unsubStaff(); };
+    return () => { unsubNotes(); unsubSettings(); unsubStudents(); unsubStaff(); };
   }, [user.id, appId]); 
 
   // --- FUNCIONES ---
@@ -193,105 +198,346 @@ export function DashboardView({ user, db, appId, setActiveTab, tasks = [], event
     } catch (err) { alert(err.message); }
   };
 
-  const visibleAnnouncements = announcements.filter(a => {
-    const hasPermission = isSuperAdmin || a.authorId === user.id || !a.channel || a.channel === 'general' || (a.channel === 'inclusion' && isInclusionStaff) || (a.channel === 'sede' && isSedeStaff);
-    const scheduleDate = new Date(`${a.showDate || '2000-01-01'}T${a.showTime || '00:00'}`);
-    return hasPermission && (new Date() >= scheduleDate);
-  });
+  const visibleAnnouncements = moduleEnabled('notifications')
+    ? announcements.filter(a => {
+        const hasPermission =
+          isSuperAdmin ||
+          a.authorId === user.id ||
+          !a.channel ||
+          a.channel === 'general' ||
+          (a.channel === 'inclusion' && isInclusionStaff) ||
+          (a.channel === 'sede' && isSedeStaff);
 
-  const myPendingTasksCount = tasks.filter(t => {
-      if (t.status === 'completed') return false;
-      const sched = new Date(`${t.showDate || '2000-01-01'}T${t.showTime || '00:00'}`);
-      if (sched > new Date()) return false; 
-      return isSuperAdmin || t.createdById === user.id || t.targetUserId === user.id || t.targetRoles?.some(r => r.toLowerCase() === user.role?.toLowerCase());
-  }).length;
+        const scheduleDate = new Date(
+          `${a.showDate || '2000-01-01'}T${a.showTime || '00:00'}`
+        );
+
+        return hasPermission && new Date() >= scheduleDate;
+      })
+    : [];
+
+  const myPendingTasksCount = moduleEnabled('tasks')
+    ? tasks.filter(t => {
+        if (t.status === 'completed') return false;
+
+        const sched = new Date(
+          `${t.showDate || '2000-01-01'}T${t.showTime || '00:00'}`
+        );
+
+        if (sched > new Date()) return false;
+
+        return (
+          isSuperAdmin ||
+          t.createdById === user.id ||
+          t.targetUserId === user.id ||
+          t.targetRoles?.some(
+            r => r.toLowerCase() === user.role?.toLowerCase()
+          )
+        );
+      }).length
+    : 0;
 
 return (
     <div className="w-full max-w-7xl mx-auto space-y-6 animate-in fade-in pb-20 overflow-y-auto h-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-     
-    {/* HEADER BIENVENIDA */}
-      <div className="flex justify-between items-center px-2">
-          <div className="flex flex-col items-start gap-1.5">
-            <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic leading-none mt-1">¡Hola, {user.firstName}! 👋</h2>
-            
-          </div>
-          
-          <div className="flex gap-2">
-            <button onClick={() => setShowTutorial(true)} className="bg-white text-violet-600 px-3 py-2 rounded-xl text-xs font-bold shadow-sm border border-violet-100 flex items-center gap-1"><HelpCircle size={16}/> Ayuda</button>
-            {canPost && <button onClick={() => setShowAnnounceModal(true)} className="bg-orange-500 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1"><Edit3 size={14}/> Aviso</button>}
-          </div>
+      {/* ENCABEZADO */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-violet-600 mb-1">
+            {appConfig.institutionShortName || appConfig.institutionName || 'Institución'}
+          </p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+            Hola, {user.firstName || 'bienvenido'}
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Este es el resumen de tu actividad institucional.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowTutorial(true)}
+            className="bg-white text-violet-700 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-sm border border-slate-200 flex items-center gap-2 hover:border-violet-200 hover:bg-violet-50 transition"
+          >
+            <HelpCircle size={16} />
+            Ayuda
+          </button>
+
+          {canPost && moduleEnabled('notifications') && (
+            <button
+              onClick={() => setShowAnnounceModal(true)}
+              className="bg-violet-600 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 hover:bg-violet-700 transition"
+            >
+              <Edit3 size={14} />
+              Nuevo aviso
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* 1. CARTELERA */}
+      {/* CARTELERA */}
       {visibleAnnouncements.length > 0 && (
-        <div className="bg-yellow-100 p-5 rounded-[30px] border-2 border-yellow-200 shadow-sm relative mx-1">
-          <h3 className="text-[10px] font-black text-yellow-700 uppercase mb-3 flex items-center gap-1"><Bell size={12}/> Cartelera Oficial</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <section className="mx-1 bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-amber-100 bg-amber-50">
+            <h3 className="text-xs font-black text-amber-900 uppercase tracking-widest flex items-center gap-2">
+              <Bell size={14} />
+              Avisos institucionales
+            </h3>
+          </div>
+
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             {visibleAnnouncements.map(a => (
-              <div key={a.id} className="bg-white/80 p-3 rounded-2xl border border-yellow-200/50 text-sm text-gray-800 flex justify-between items-start">
-                <div><p className="italic font-medium">"{a.message}"</p><p className="text-[9px] text-yellow-600 font-bold mt-1 uppercase">- {a.author}</p></div>
-                {(canPost || a.authorId === user.id) && <button onClick={() => deleteAnnouncement(a.id)} className="text-yellow-600 hover:text-red-500 p-1 rounded-lg transition"><Trash2 size={14}/></button>}
+              <div
+                key={a.id}
+                className="bg-amber-50/60 p-4 rounded-2xl border border-amber-100 text-sm text-slate-700 flex justify-between items-start gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium leading-relaxed break-words">{a.message}</p>
+                  <p className="text-[10px] text-amber-700 font-bold mt-2 uppercase">{a.author}</p>
+                </div>
+
+                {(canPost || a.authorId === user.id) && (
+                  <button
+                    onClick={() => deleteAnnouncement(a.id)}
+                    className="text-slate-300 hover:text-red-500 p-1 rounded-lg transition shrink-0"
+                    title="Eliminar aviso"
+                    aria-label="Eliminar aviso"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* CUMPLEAÑOS Y PRÓXIMA FECHA */}
+      {(moduleEnabled('matricula') || moduleEnabled('personal') || moduleEnabled('calendar')) && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-1">
+          {moduleEnabled('matricula') && studentBirthdays.length > 0 && (
+            <button
+              onClick={() => {
+                setBirthdayModalType('students');
+                setShowBirthdayModal(true);
+              }}
+              className="bg-white p-4 rounded-2xl shadow-sm border border-pink-100 flex items-center gap-3 text-left hover:border-pink-200 hover:shadow-md transition"
+            >
+              <div className="bg-pink-50 text-pink-600 p-2.5 rounded-xl">
+                <Crown size={19} />
+              </div>
+              <div>
+                <h3 className="font-black text-xs uppercase text-slate-800">Cumpleaños</h3>
+                <p className="text-[11px] text-slate-500">
+                  {studentBirthdays.length} estudiante{studentBirthdays.length === 1 ? '' : 's'} esta semana
+                </p>
+              </div>
+            </button>
+          )}
+
+          {moduleEnabled('personal') && staffBirthdays.length > 0 && (
+            <button
+              onClick={() => {
+                setBirthdayModalType('staff');
+                setShowBirthdayModal(true);
+              }}
+              className="bg-white p-4 rounded-2xl shadow-sm border border-violet-100 flex items-center gap-3 text-left hover:border-violet-200 hover:shadow-md transition"
+            >
+              <div className="bg-violet-50 text-violet-600 p-2.5 rounded-xl">
+                <User size={19} />
+              </div>
+              <div>
+                <h3 className="font-black text-xs uppercase text-slate-800">Cumpleaños del personal</h3>
+                <p className="text-[11px] text-slate-500">
+                  {staffBirthdays.length} persona{staffBirthdays.length === 1 ? '' : 's'} esta semana
+                </p>
+              </div>
+            </button>
+          )}
+
+          {moduleEnabled('calendar') && (
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 relative group flex items-center gap-4">
+              {isManagement && !isEditingCountdown && (
+                <button
+                  onClick={() => {
+                    setNewCountdownTitle(countdown.title || '');
+                    setNewCountdownDate(countdown.date || '');
+                    setIsEditingCountdown(true);
+                  }}
+                  className="absolute top-2 right-2 text-slate-300 hover:text-violet-500 opacity-0 group-hover:opacity-100 transition"
+                  title="Editar cuenta regresiva"
+                  aria-label="Editar cuenta regresiva"
+                >
+                  <Edit3 size={14} />
+                </button>
+              )}
+
+              {isEditingCountdown ? (
+                <div className="w-full flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={newCountdownTitle}
+                    onChange={e => setNewCountdownTitle(e.target.value)}
+                    placeholder="Ej.: Receso de invierno"
+                    className="w-full p-2.5 text-xs border border-slate-200 rounded-xl bg-white"
+                  />
+                  <input
+                    type="date"
+                    value={newCountdownDate}
+                    onChange={e => setNewCountdownDate(e.target.value)}
+                    className="w-full p-2.5 text-xs border border-slate-200 rounded-xl bg-white"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveCountdown}
+                      className="flex-1 bg-violet-600 text-white text-xs font-bold p-2.5 rounded-xl"
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => setIsEditingCountdown(false)}
+                      className="px-4 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-violet-600 text-white w-12 h-12 rounded-xl flex flex-col items-center justify-center shadow-sm shrink-0">
+                    <span className="text-lg font-black leading-none">{countdown.daysLeft}</span>
+                    <span className="text-[7px] font-bold uppercase tracking-wide">Días háb.</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] text-violet-500 font-bold uppercase tracking-wide">Próxima fecha</p>
+                    <h3 className="font-black text-slate-800 text-sm leading-tight truncate">
+                      {countdown.title || 'Configurar cuenta regresiva'}
+                    </h3>
+                    {countdown.date && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {new Date(`${countdown.date}T00:00:00`).toLocaleDateString('es-AR')}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-     
-      
-      {/* 3. CUMPLES Y CUENTA REGRESIVA */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-1">
-          {studentBirthdays.length > 0 && (
-              <button onClick={() => { setBirthdayModalType('students'); setShowBirthdayModal(true); }} className="bg-gradient-to-r from-pink-400 to-pink-500 p-4 rounded-2xl shadow-sm text-white flex items-center gap-3 active:scale-95 transition text-left">
-                  <div className="bg-white/20 p-2 rounded-xl"><Crown size={20}/></div>
-                  <div><h3 className="font-black text-xs uppercase">Cumples Alumnos</h3><p className="text-[10px] opacity-90">{studentBirthdays.length} esta semana</p></div>
-              </button>
+      {/* TAREAS Y AGENDA */}
+      {(moduleEnabled('tasks') || moduleEnabled('calendar')) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-1">
+          {moduleEnabled('tasks') && (
+            <button
+              onClick={() => setActiveTab('tasks')}
+              className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm text-left hover:shadow-md hover:border-orange-200 transition flex items-center justify-between"
+            >
+              <div>
+                <h4 className="text-3xl font-black text-orange-500">{myPendingTasksCount}</h4>
+                <p className="text-[9px] font-bold uppercase text-slate-400 tracking-widest mt-1">Tareas pendientes</p>
+              </div>
+              <ChevronRight className="text-orange-200" />
+            </button>
           )}
-          {staffBirthdays.length > 0 && (
-              <button onClick={() => { setBirthdayModalType('staff'); setShowBirthdayModal(true); }} className="bg-gradient-to-r from-violet-500 to-indigo-500 p-4 rounded-2xl shadow-sm text-white flex items-center gap-3 active:scale-95 transition text-left">
-                  <div className="bg-white/20 p-2 rounded-xl"><User size={20}/></div>
-                  <div><h3 className="font-black text-xs uppercase">Cumples Staff</h3><p className="text-[10px] opacity-90">{staffBirthdays.length} esta semana</p></div>
-              </button>
-          )}
-          <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm relative group flex items-center gap-4">
-              {isManagement && !isEditingCountdown && (<button onClick={() => setIsEditingCountdown(true)} className="absolute top-2 right-2 text-blue-300 opacity-0 group-hover:opacity-100"><Edit3 size={14}/></button>)}
-              {isEditingCountdown ? (
-                  <div className="w-full flex flex-col gap-1"><input type="text" value={newCountdownTitle} onChange={e=>setNewCountdownTitle(e.target.value)} placeholder="Título" className="p-1 text-xs border rounded"/><input type="date" value={newCountdownDate} onChange={e=>setNewCountdownDate(e.target.value)} className="p-1 text-xs border rounded"/><button onClick={handleSaveCountdown} className="bg-blue-500 text-white text-[10px] font-bold p-1 rounded-lg mt-1 uppercase">Guardar</button></div>
-              ) : (
-                  <><div className="bg-blue-500 text-white w-10 h-10 rounded-xl flex flex-col items-center justify-center shadow-md shrink-0"><span className="text-lg font-black leading-none">{countdown.daysLeft}</span><span className="text-[7px] font-bold uppercase tracking-tighter">Días Háb.</span></div><div className="flex-1"><p className="text-[9px] text-blue-400 font-bold uppercase">Falta poco para...</p><h3 className="font-black text-blue-900 text-xs leading-tight">{countdown.title || "Configurar"}</h3></div></>
-              )}
-          </div>
-      </div>
 
-      {/* 4. TAREAS Y CALENDARIO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-1">
-        <div onClick={() => setActiveTab('tasks')} className="bg-white p-5 rounded-[30px] border border-orange-100 shadow-sm cursor-pointer hover:shadow-md transition flex items-center justify-between">
-          <div><h4 className="text-3xl font-black text-orange-500">{myPendingTasksCount}</h4><p className="text-[9px] font-bold uppercase text-gray-400 tracking-widest">Tareas Pendientes</p></div>
-          <ChevronRight className="text-orange-200" />
+          {moduleEnabled('calendar') && (
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`p-5 rounded-3xl border shadow-sm text-left hover:shadow-md transition flex items-center justify-between ${
+                todayEvents.length > 0
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="min-w-0">
+                {todayEvents.length > 0 ? (
+                  <>
+                    <p className="text-[9px] uppercase font-bold tracking-widest opacity-70 mb-1">
+                      {todayEvents.length === 1 ? 'Evento de hoy' : `${todayEvents.length} eventos hoy`}
+                    </p>
+                    <h4 className="text-lg font-black leading-tight truncate">
+                      {todayEvents[0].title || 'Actividad institucional'}
+                    </h4>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="text-3xl font-black text-violet-600">0</h4>
+                    <p className="text-[9px] font-bold uppercase text-slate-400 tracking-widest mt-1">Eventos hoy</p>
+                  </>
+                )}
+              </div>
+              <ChevronRight className={todayEvents.length > 0 ? 'text-white/40' : 'text-violet-100'} />
+            </button>
+          )}
         </div>
-        <div onClick={() => setActiveTab('calendar')} className={`p-5 rounded-[30px] border shadow-sm cursor-pointer hover:shadow-md transition flex items-center justify-between ${todayEvents.length > 0 ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-violet-100'}`}>
-          <div>{todayEvents.length > 0 ? <><h4 className="text-lg font-black leading-tight mb-1">{todayEvents[0].title}</h4><p className="text-[9px] opacity-80 uppercase font-bold tracking-widest">Evento de Hoy</p></> : <><h4 className="text-3xl font-black text-violet-600">0</h4><p className="text-[9px] font-bold uppercase text-gray-400 tracking-widest">Eventos Hoy</p></>}</div>
-          <ChevronRight className={todayEvents.length > 0 ? "text-white/30" : "text-violet-100"} />
-        </div>
-      </div>
-      
-      {/* 5. TAREAS PERSONALES */}
-      <div className="bg-gray-50 p-5 rounded-[35px] border border-gray-100 shadow-inner mx-1">
-        <h3 className="font-black text-gray-400 uppercase text-[10px] mb-3 flex items-center gap-2"><Lock size={12}/> Tareas Personales</h3>
-        <form onSubmit={saveNote} className="flex gap-2 mb-3">
-          <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Nueva nota..." className="flex-1 p-3 rounded-xl outline-none text-xs bg-white shadow-sm font-medium" />
-          <button type="submit" className="bg-violet-600 text-white p-3 rounded-xl font-bold shadow-lg hover:bg-violet-700 transition"><Plus size={16}/></button>
-        </form>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {notes.map(n => (
-            <div key={n.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-gray-100 shadow-sm group">
-              <button onClick={() => toggleNote(n)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${n.done ? 'bg-violet-400 border-violet-400' : 'border-violet-200'}`}>{n.done && <Check size={10} className="text-white"/>}</button>
-              <span className={`text-xs flex-1 font-medium ${n.done ? 'line-through text-gray-300' : 'text-gray-600'}`}>{n.text}</span>
-              <button onClick={() => deleteNote(n.id)} className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"><Trash2 size={14}/></button>
+      )}
+
+      {/* NOTAS PERSONALES */}
+      {moduleEnabled('tasks') && (
+        <section className="bg-slate-50 p-5 rounded-3xl border border-slate-200 shadow-sm mx-1">
+          <div className="mb-3">
+            <h3 className="font-black text-slate-700 uppercase text-[10px] flex items-center gap-2">
+              <Lock size={12} />
+              Mis notas
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">Un espacio privado para tus pendientes personales.</p>
+          </div>
+
+          <form onSubmit={saveNote} className="flex gap-2 mb-3">
+            <input
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="Escribí una nota..."
+              className="flex-1 p-3 rounded-xl outline-none text-xs bg-white border border-slate-200 shadow-sm"
+            />
+            <button
+              type="submit"
+              className="bg-violet-600 text-white p-3 rounded-xl font-bold shadow-sm hover:bg-violet-700 transition"
+              title="Agregar nota"
+              aria-label="Agregar nota"
+            >
+              <Plus size={16} />
+            </button>
+          </form>
+
+          {notes.length === 0 ? (
+            <div className="py-6 text-center text-slate-400 text-xs">Todavía no tenés notas personales.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {notes.map(n => (
+                <div key={n.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm group">
+                  <button
+                    onClick={() => toggleNote(n)}
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      n.done ? 'bg-violet-500 border-violet-500' : 'border-violet-200'
+                    }`}
+                    title={n.done ? 'Marcar como pendiente' : 'Marcar como realizada'}
+                    aria-label={n.done ? 'Marcar como pendiente' : 'Marcar como realizada'}
+                  >
+                    {n.done && <Check size={10} className="text-white" />}
+                  </button>
+
+                  <span className={`text-xs flex-1 font-medium ${n.done ? 'line-through text-slate-300' : 'text-slate-600'}`}>
+                    {n.text}
+                  </span>
+
+                  <button
+                    onClick={() => deleteNote(n.id)}
+                    className="text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+                    title="Eliminar nota"
+                    aria-label="Eliminar nota"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          )}
+        </section>
+      )}
+    </div>
+  )
 
       {showBirthdayModal && (
         <div className="fixed inset-0 bg-slate-900/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-md" onClick={() => setShowBirthdayModal(false)}>
