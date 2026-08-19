@@ -320,22 +320,64 @@ function InitialAdminScreen({ onCreated }) {
         }
       }
 
-      const profile = {
-  firstName: form.firstName.trim(),
-  lastName: form.lastName.trim(),
-  fullName:
-    `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-  email,
-  username: email,
-  role: 'Equipo Directivo',
-  rol: 'admin',
-  accessRoleId: 'admin',
-  isAdmin: true,
-  authUid: credential.user.uid,
-  personId: credential.user.uid,
-  createdAt: serverTimestamp(),
-  lastLogin: serverTimestamp()
-};
+           const profile = {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        fullName:
+          `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+        email,
+        username: email,
+
+        // Rol de acceso a CENTRA.
+        role: 'Equipo Directivo',
+        rol: 'admin',
+        accessRoleId: 'admin',
+
+        isAdmin: true,
+
+        authUid: credential.user.uid,
+
+        // La persona y la cuenta quedan vinculadas.
+        personId: credential.user.uid,
+
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp()
+      };
+
+      // Inicializa la nueva arquitectura de CENTRA:
+      // persona + perfil de personal + usuario + configuración
+      // + control de versión de la instalación.
+      const initialization =
+        await initializeCENTRAInstallation({
+          db,
+          appId,
+          authUser: credential.user,
+          adminProfile: profile
+        });
+
+      const completeProfile = {
+        ...profile,
+        id: credential.user.uid,
+        personId: initialization.personId,
+        architectureVersion:
+          initialization.architectureVersion
+      };
+
+      localStorage.setItem(
+        INSTALLATION_COMPLETE_KEY,
+        'true'
+      );
+
+      localStorage.setItem(
+        'schoolApp_profile',
+        JSON.stringify(
+          completeProfile
+        )
+      );
+
+      onCreated(
+        completeProfile
+      );
 
 const initialization =
   await initializeCENTRAInstallation({
