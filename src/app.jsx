@@ -764,7 +764,13 @@ function MainApp({ user, onLogout }) {
   
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 font-sans text-slate-800 overflow-hidden relative">
-      <header className="bg-violet-800 text-white shadow-lg px-4 py-3 flex justify-between items-center z-50 sticky top-0 shrink-0">
+      <header
+  className="text-white shadow-lg px-4 py-3 flex justify-between items-center z-50 sticky top-0 shrink-0"
+  style={{
+    backgroundColor:
+      appConfig.primaryColor || 'var(--app-primary)'
+  }}
+>
         <div className="flex items-center space-x-3">
           <img src={appConfig.logoUrl || LOGO_URL()} alt="Logo" className="w-10 h-8 object-contain" />
           <div>
@@ -828,14 +834,20 @@ function MainApp({ user, onLogout }) {
         {activeTab === 'personal' && hasModule('personal') && isAdminRole && db && <PersonalView user={user} db={db} appId={appId} TURNS_LIST={appConfig.turns} VALID_ROLES_OFFICIAL={appConfig.roles} />}
         {activeTab === 'admin' && hasModule('admin') && isAdminRole && db && <AdministracionView user={user} db={db} appId={appId} />}
         {activeTab === 'equipo' && hasModule('equipo') && isTechTeamRole && db && <EquipoTecnicoView user={user} db={db} appId={appId} />}
-        {activeTab === 'medical' && hasModule('medical') && isMedicalRole && db && <MedicalView user={user} db={db} appId={appId} />}
-  
+        {activeTab === 'medical' && hasModule('medical') && isMedicalRole && db && <MedicalView user={user} db={db} appId={appId} />}  
         {activeTab === 'informes' && hasModule('informes') && appConfig.features.reports !== false && (<InformesView user={user} students={students} db={db} appId={appId} />)}
         {activeTab === 'informes_externos' && hasModule('informes_externos') && appConfig.features.externalReports !== false && canAccessInformesExternos && (<InformesExternosView user={user} db={db} appId={appId} />)}
         {activeTab === 'audit' && hasModule('audit') && isSuperAdmin && db && (<ActivityLogView db={db} appId={appId} />)}
         {activeTab === 'configuracion' && hasModule('configuracion') && isSuperAdmin && db && (<ConfiguracionView db={db} appId={appId} auth={auth} />)}
       </main>
-
+  <a
+      href="https://www.somosnomade.com.ar/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fixed bottom-[72px] right-3 z-20 text-[9px] font-semibold text-slate-400 hover:text-violet-600 transition bg-white/90 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-slate-200/70 shadow-sm"
+    >
+      Desarrollado por <span className="font-black">NOMADE</span> ↗
+    </a>
       <nav className="fixed bottom-0 w-full bg-white border-t border-violet-100 h-16 z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-safe shrink-0 text-center">
         <div className="grid grid-cols-5 h-full max-w-3xl mx-auto px-2 relative">
           <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="Inicio" />
