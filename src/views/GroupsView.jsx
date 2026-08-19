@@ -74,13 +74,35 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
     });
   };
 
-  const isManagement = [
-    'admin',
-    'super-admin',
-    'Equipo Directivo',
-    'Equipo Técnico',
-    'Administración'
-  ].includes(user.role) || user.rol === 'admin';
+  const isManagement =
+    user?.rol === 'admin' ||
+    user?.rol === 'super-admin' ||
+    user?.accessRoleId === 'admin' ||
+    [
+      'admin',
+      'super-admin',
+      'Equipo Directivo',
+      'Equipo Técnico',
+      'Administración'
+    ].includes(user?.role);
+
+  const scheduleTypeOptions = (Array.isArray(institutionConfig.scheduleTypes) ? institutionConfig.scheduleTypes : []).map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: item.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+        name: item
+      };
+    }
+    return {
+      id: item?.id || `jornada_${index + 1}`,
+      name: item?.name || item?.label || `Jornada ${index + 1}`
+    };
+  });
+
+  const getScheduleTypeLabel = (scheduleType) =>
+    scheduleTypeOptions.find(item => item.id === scheduleType)?.name ||
+    scheduleType ||
+    'Jornada';
 
   const turnOptions = (Array.isArray(institutionConfig.turns) ? institutionConfig.turns : []).map((turn, index) => {
     if (typeof turn === 'string') return { id: `turno_${index + 1}`, name: turn };
@@ -497,7 +519,7 @@ export function GroupsView({ user, db, appId, setActiveTab, onSelectStudent }) {
       levelId: '',
       sectionId: '',
       turnIds: turnOptions[0] ? [turnOptions[0].id] : [],
-      scheduleType: 'simple',
+      scheduleType: scheduleTypeOptions[0]?.id || 'simple',
       enabledRoles: normalizeRoles([docenteRole.id]),
       classroom: '',
       driveLink: '',
@@ -730,109 +752,241 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
         </div>
       </div>
       
-      <div className="flex-1 relative flex items-start overflow-hidden">
-        <button 
-          onClick={() => scroll('left')}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white text-violet-600 p-4 rounded-full shadow-2xl border border-slate-100 hover:scale-110 active:scale-95 transition-all hidden lg:flex"
-        >
-          <ChevronLeft size={32} strokeWidth={3} />
-        </button>
-
-        <div 
-          ref={scrollRef} 
-          className="h-full w-full overflow-x-auto flex gap-6 p-6 scroll-smooth no-scrollbar items-start"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
+      <div className="flex-1 overflow-y-auto bg-slate-50/70">
+        <div className="max-w-[1800px] mx-auto p-4 md:p-6 lg:p-8">
           {gruposFinales.length === 0 ? (
-            <div className="w-full min-h-[360px] flex items-center justify-center">
-              <div className="max-w-md text-center bg-white border border-slate-200 rounded-[32px] p-10 shadow-sm">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center mb-5"><UsersRound size={30}/></div>
-                <h3 className="text-lg font-black text-slate-800">Todavía no hay grupos</h3>
-                <p className="text-sm text-slate-400 mt-2">Los grupos se crean desde esta sección. Después, los estudiantes se asignan desde Legajos.</p>
-                {isManagement && <button onClick={openCreateGroup} className="mt-5 inline-flex items-center gap-2 px-4 py-3 bg-violet-600 text-white rounded-xl font-black text-xs"><Plus size={16}/> Crear primer grupo</button>}
+            <div className="min-h-[420px] flex items-center justify-center">
+              <div className="w-full max-w-xl bg-white border border-slate-200 rounded-[32px] p-10 md:p-14 text-center shadow-sm">
+                <div className="w-20 h-20 mx-auto rounded-[24px] bg-violet-50 text-violet-600 flex items-center justify-center mb-6">
+                  <UsersRound size={34}/>
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-500">
+                  Estructura institucional
+                </p>
+                <h3 className="text-2xl font-black text-slate-900 mt-2">
+                  Todavía no hay grupos
+                </h3>
+                <p className="text-sm leading-relaxed text-slate-500 mt-3 max-w-md mx-auto">
+                  Creá los grupos de la institución y definí qué roles necesita cada uno.
+                  Después, los estudiantes se asignarán desde Legajos.
+                </p>
+                {isManagement && (
+                  <button
+                    onClick={openCreateGroup}
+                    className="mt-7 inline-flex items-center gap-2 px-5 py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-violet-200 transition"
+                  >
+                    <Plus size={17}/>
+                    Crear primer grupo
+                  </button>
+                )}
               </div>
             </div>
-          ) : gruposFinales.map((g) => (
-            <div key={g.id} className="flex flex-col min-w-[340px] bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden h-fit mb-10">
-              <div className="p-6 border-b border-slate-100 relative bg-white">
-                <div className="absolute top-4 right-4 flex gap-1">
-                  <button onClick={() => { setGroupsToPrint([g]); setShowPrintOptions(true); }} className="p-2 bg-white/80 hover:bg-white rounded-full text-violet-600 shadow-sm transition"><Printer size={14}/></button>
-                  <button onClick={() => setSelectedGroupDetails(g)} className="p-2 bg-violet-600 text-white rounded-full shadow-lg hover:scale-110 transition"><Plus size={16}/></button>
-                  {isManagement && <button onClick={() => openEditGroup(g)} className="p-2 bg-white/80 hover:bg-white rounded-full text-slate-400 shadow-sm transition"><Edit3 size={14}/></button>}
-                </div>
-                
-                <h3 className="font-black text-slate-800 text-xl leading-tight pr-16 uppercase">{g.name}</h3>
-                
-                <div className="flex flex-col gap-2 mt-3">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="bg-white text-violet-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase shadow-sm border border-violet-100">
-                      {g.students.length} {g.students.length === 1 ? 'estudiante' : 'estudiantes'}
-                    </span>
-                    {g.turnLabels?.length > 0 && (
-                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg text-[9px] font-black border border-slate-200 uppercase">
-                        {g.turnLabels.join(' · ')}
-                      </span>
-                    )}
-                    {g.classroom && (
-                      <span className="bg-white text-orange-700 px-2 py-1 rounded-lg text-[9px] font-black border border-orange-100 uppercase">
-                        {g.classroom}
-                      </span>
-                    )}
-                  </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5">
+              {gruposFinales.map((g) => {
+                const docente = g.staffByRole?.find(item => item.roleId === docenteRole.id);
+                const otherStaff = (g.staffByRole || []).filter(item => item.roleId !== docenteRole.id);
 
-                  <div className="mt-4 pt-4 border-t border-slate-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Equipo del grupo</p>
-                    <div className="space-y-1.5">
-                      {g.enabledRoles.map(roleId => {
-                        const assignment = g.staffByRole.find(item => item.roleId === roleId);
-                        return (
-                          <div key={roleId} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                            <span className="text-[9px] font-black uppercase text-slate-400">{getRoleLabel(roleId)}</span>
-                            <span className={`text-[10px] font-black ${assignment?.name ? 'text-slate-700' : 'text-slate-300'}`}>
-                              {assignment?.name || 'Sin asignar'}
+                return (
+                  <article
+                    key={g.id}
+                    className="group bg-white rounded-[30px] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all overflow-hidden"
+                  >
+                    <div className="p-5 md:p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {g.turnLabels?.map(label => (
+                              <span
+                                key={label}
+                                className="inline-flex items-center px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-100 text-[9px] font-black uppercase tracking-wide"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-wide">
+                              {getScheduleTypeLabel(g.scheduleType)}
                             </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="p-4 bg-slate-50/30 space-y-2 h-fit">
-                {[...g.students].sort((a,b)=>(a.lastName||'').localeCompare(b.lastName||'')).map(s => (
-                  <div key={s.id} onClick={() => setSelectedStudent(s)} className="bg-white p-3 rounded-[24px] shadow-sm flex items-center justify-between cursor-pointer border-2 border-transparent hover:border-violet-200 transition-all group/item">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-400 border border-slate-200 text-sm overflow-hidden shadow-inner shrink-0">
-                        {s.photoUrl ? (
-                          <img src={s.photoUrl} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform"/>
-                        ) : (
-                          <span>{s.firstName[0]}</span>
-                        )}
+                          <h3 className="text-xl md:text-2xl font-black text-slate-900 truncate">
+                            {g.name}
+                          </h3>
+
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] font-bold text-slate-400 uppercase">
+                            {g.levelId && <span>{g.levelId}</span>}
+                            {g.sectionId && <span>• {g.sectionId}</span>}
+                            {g.classroom && <span>• {g.classroom}</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              setGroupsToPrint([g]);
+                              setShowPrintOptions(true);
+                            }}
+                            className="p-2.5 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition"
+                            title="Imprimir grupo"
+                          >
+                            <Printer size={15}/>
+                          </button>
+
+                          {isManagement && (
+                            <button
+                              onClick={() => openEditGroup(g)}
+                              className="p-2.5 rounded-xl bg-violet-50 text-violet-600 hover:bg-violet-100 transition"
+                              title="Editar grupo"
+                            >
+                              <Edit3 size={15}/>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-bold text-xs text-slate-700 uppercase tracking-tight truncate">{s.lastName}, {s.firstName}</span>
-                        {s.birthDate && (
-                          <span className="text-[10px] font-black text-violet-600 uppercase tracking-wider mt-0.5 bg-violet-50 px-1.5 py-0.5 rounded-md w-fit">
-                            {calculateAge(s.birthDate)} años
+
+                      <div className="grid grid-cols-2 gap-3 mt-6">
+                        <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                            Estudiantes
+                          </p>
+                          <p className="text-2xl font-black text-slate-800 mt-1">
+                            {g.students.length}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-violet-50 border border-violet-100 p-3">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">
+                            Roles
+                          </p>
+                          <p className="text-2xl font-black text-violet-700 mt-1">
+                            {g.enabledRoles.length}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 pt-5 border-t border-slate-100">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                              Equipo
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {otherStaff.length + (docente ? 1 : 0)} asignación{(otherStaff.length + (docente ? 1 : 0)) === 1 ? '' : 'es'}
+                            </p>
+                          </div>
+
+                          {isManagement && (
+                            <button
+                              onClick={() => openEditGroup(g)}
+                              className="text-[10px] font-black text-violet-600 hover:text-violet-800"
+                            >
+                              Gestionar
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          {g.enabledRoles.map(roleId => {
+                            const assignment = g.staffByRole.find(item => item.roleId === roleId);
+                            return (
+                              <div
+                                key={roleId}
+                                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                    assignment?.name
+                                      ? 'bg-emerald-500'
+                                      : 'bg-slate-300'
+                                  }`}/>
+                                  <span className="text-[10px] font-black uppercase text-slate-400 truncate">
+                                    {getRoleLabel(roleId)}
+                                  </span>
+                                </div>
+
+                                <span className={`text-[10px] font-black text-right truncate ${
+                                  assignment?.name
+                                    ? 'text-slate-700'
+                                    : 'text-slate-300'
+                                }`}>
+                                  {assignment?.name || 'Sin asignar'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex gap-2">
+                        <button
+                          onClick={() => setSelectedGroupDetails(g)}
+                          className="flex-1 py-3 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-wide hover:bg-slate-800 transition"
+                        >
+                          Ver grupo
+                        </button>
+
+                        <button
+                          onClick={() => setSelectedGroupDetails(g)}
+                          className="px-4 py-3 rounded-2xl bg-violet-50 text-violet-700 hover:bg-violet-100 transition"
+                          title="Ver estudiantes"
+                        >
+                          <Users size={17}/>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 bg-slate-50/50 p-3">
+                      {g.students.length === 0 ? (
+                        <div className="text-center py-4">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">
+                            Sin estudiantes asignados
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Se completará desde Legajos.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex -space-x-2 overflow-hidden pl-1">
+                            {[...g.students]
+                              .sort((a,b)=>(a.lastName||'').localeCompare(b.lastName||''))
+                              .slice(0, 6)
+                              .map(student => (
+                                <div
+                                  key={student.id}
+                                  className="w-9 h-9 rounded-full border-2 border-white bg-slate-200 overflow-hidden flex items-center justify-center text-[9px] font-black text-slate-400"
+                                  title={`${student.lastName || ''}, ${student.firstName || ''}`}
+                                >
+                                  {student.photoUrl ? (
+                                    <img
+                                      src={student.photoUrl}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    (student.firstName?.[0] || '?').toUpperCase()
+                                  )}
+                                </div>
+                              ))
+                            }
+                            {g.students.length > 6 && (
+                              <div className="w-9 h-9 rounded-full border-2 border-white bg-violet-100 text-violet-700 flex items-center justify-center text-[9px] font-black">
+                                +{g.students.length - 6}
+                              </div>
+                            )}
+                          </div>
+
+                          <span className="text-[10px] font-black text-slate-400 uppercase">
+                            Ver listado →
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                    <button onClick={(e) => {e.stopPropagation(); setShowBitacoraModal(s); setIsWriting(false);}} className="w-9 h-9 bg-violet-50 text-violet-500 rounded-full flex items-center justify-center hover:bg-violet-600 hover:text-white transition-all shadow-sm shrink-0 ml-2">⚡</button>
-                  </div>
-                ))}
-              </div>
+                  </article>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
-
-        <button 
-          onClick={() => scroll('right')}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white text-violet-600 p-4 rounded-full shadow-2xl border border-slate-100 hover:scale-110 active:scale-95 transition-all hidden lg:flex"
-        >
-          <ChevronRight size={32} strokeWidth={3} />
-        </button>
       </div>
 
       {selectedStudent && (
@@ -1205,7 +1359,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
               <label className="block md:col-span-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nombre del grupo</span><input name="groupName" defaultValue={editingGroup.name || ''} required className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-black text-sm outline-none border border-slate-200" placeholder="Ej.: Grupo Azul" /></label>
               <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nivel</span><input name="levelId" defaultValue={editingGroup.levelId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Nivel" /></label>
               <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sección</span><input name="sectionId" defaultValue={editingGroup.sectionId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Sección" /></label>
-              <label className="block md:col-span-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sede</span><input name="siteId" defaultValue={editingGroup.siteId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Sede" /></label>
+              <label className="block md:col-span-2"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sede / establecimiento</span><input name="siteId" defaultValue={editingGroup.siteId || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" placeholder="Sede" /></label>
 
               <div className="md:col-span-2">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Turnos configurados</span>
@@ -1219,7 +1373,7 @@ const handleSaveIncident = async (type, severity = "medium", text = "") => {
                 </div>
               </div>
 
-              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jornada</span><select name="scheduleType" defaultValue={editingGroup.scheduleType || 'simple'} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200"><option value="simple">Jornada simple</option><option value="double">Doble jornada</option></select></label>
+              <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jornada</span><select name="scheduleType" defaultValue={editingGroup.scheduleType || scheduleTypeOptions[0]?.id || 'simple'} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200"><option value="">Seleccionar</option>{scheduleTypeOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
               <label className="block"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aula / Espacio</span><input name="classroom" defaultValue={editingGroup.classroom || ''} className="mt-1 w-full p-3.5 bg-slate-50 rounded-xl font-bold text-sm outline-none border border-slate-200" /></label>
             </div>
 
