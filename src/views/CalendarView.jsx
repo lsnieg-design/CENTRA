@@ -1006,9 +1006,9 @@ export function CalendarView({
               : ''
           }`}
         >
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-1">
             <span
-              className={`text-xs font-black rounded-full w-7 h-7 flex items-center justify-center ${
+              className={`text-[11px] font-black rounded-full w-6 h-6 flex items-center justify-center ${
                 isToday
                   ? 'bg-violet-600 text-white'
                   : 'text-slate-500'
@@ -1024,27 +1024,27 @@ export function CalendarView({
             )}
           </div>
 
-          <div className="space-y-1 overflow-hidden">
+          <div className="space-y-1 overflow-hidden mt-1">
             {dayEvents
               .slice(0, 4)
               .map((event, index) => (
                 <div
-                  key={`${
-                    event.id ||
-                    event.title
-                  }-${index}`}
-                  className="w-full min-w-0 text-[9px] md:text-[10px] rounded-lg px-2 py-1.5 truncate font-semibold border"
-                  style={getEventStyle(
-                    event.type,
-                    eventTypeById
-                  )}
-                  title={event.title}
-                >
-                  <span className="font-black mr-1">
-                    •
-                  </span>
-                  {event.title}
-                </div>
+  key={`${
+    event.id ||
+    event.title
+  }-${index}`}
+  className="w-full min-w-0 h-6 flex items-center gap-1 rounded-md px-2 text-[9px] md:text-[10px] truncate font-semibold border"
+  style={getEventStyle(
+    event.type,
+    eventTypeById
+  )}
+  title={event.title}
+>
+  <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-current" />
+  <span className="truncate">
+    {event.title}
+  </span>
+</div>
               ))}
 
             {dayEvents.length > 4 && (
