@@ -22,11 +22,11 @@ import { getCachedAppConfig, normalizeAppConfig, cacheAppConfig, applyBranding, 
 
 import { 
   Calendar as CalendarIcon, CheckSquare, Settings, User, FileText, CheckCircle, 
-  Download, RefreshCw, Plus, Trash2, Users, AlertCircle, LogOut, Briefcase, 
+  RefreshCw, Plus, Trash2, Users, AlertCircle, LogOut, Briefcase, 
   Lock, List, Grid, ChevronLeft, ChevronRight, Bell, Check, HelpCircle, Mail, Camera, MapPin, 
   Send, Key, Filter, LayoutDashboard, Link as LinkIcon, ExternalLink, Zap,
-  AlertTriangle, Clock, Shield, Crown, Activity, Share, PlusSquare, 
-  Smartphone, GraduationCap, Search, X, UploadCloud, PieChart, Eye, Edit3, Trophy,
+  AlertTriangle, Clock, Shield, Crown, Activity, 
+  GraduationCap, Search, X, UploadCloud, PieChart, Eye, Edit3, Trophy,
   Folder, MessageSquare, Globe, BookOpen, Lightbulb, ChevronDown, PlusCircle, Printer,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Phone, CheckCircle2, Clock3, UserCheck,
   ChevronUp, ClipboardCheck
@@ -491,40 +491,6 @@ function LoginScreen({ onLogin }) {
   const [recoverUser, setRecoverUser] = useState('');
   const [recoverStatus, setRecoverStatus] = useState('idle');
   
-  const [showInstall, setShowInstall] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isIos, setIsIos] = useState(false);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-
-  useEffect(() => {
-    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
-    setIsIos(ios);
-
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      if (!isStandalone) setShowInstall(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    if (ios && !isStandalone) {
-        setTimeout(() => setShowInstall(true), 2000);
-    }
-
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, [isStandalone]);
-
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setShowInstall(false);
-      setDeferredPrompt(null);
-    }
-  };
-
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -614,48 +580,6 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-900 to-fuchsia-900 flex items-center justify-center p-6 relative">
       
-      {!isStandalone && showInstall && (
-         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-500">
-             <div className="bg-white rounded-[35px] shadow-2xl p-6 w-full max-w-sm text-center mb-4 md:mb-0 border-t-8 border-violet-500 relative">
-                 <button onClick={() => setShowInstall(false)} className="absolute top-4 right-4 text-gray-300 hover:text-gray-500"><X size={24}/></button>
-                 
-                 <div className="flex justify-center mb-4">
-                    <div className="bg-violet-100 p-4 rounded-full animate-bounce">
-                        <Smartphone className="text-violet-600" size={40} />
-                    </div>
-                 </div>
-                 
-                 <h3 className="text-2xl font-black text-gray-800 mb-2 leading-tight">¡Instalá la App! 📲</h3>
-                 <p className="text-sm text-gray-500 mb-6 font-medium">Para tener acceso rápido y recibir notificaciones importantes, instalá la app en tu celular.</p>
-                 
-                 <div className="space-y-3">
-                     {!isIos ? (
-                         <button onClick={handleInstallClick} className="w-full bg-violet-600 text-white font-bold py-4 px-4 rounded-2xl shadow-xl hover:bg-violet-700 transition flex items-center justify-center gap-2 text-sm uppercase tracking-wide">
-                             <Download size={20}/> Instalar Ahora
-                         </button>
-                     ) : (
-                         <div className="text-left bg-gray-50 p-4 rounded-2xl border border-gray-100 text-xs text-gray-600 space-y-3">
-                             <p className="font-bold text-violet-600 text-center uppercase tracking-wider mb-2">Cómo instalar en iPhone:</p>
-                             <div className="flex items-center gap-3">
-                                 <div className="bg-white p-2 rounded-lg shadow-sm text-blue-500"><Share size={18}/></div>
-                                 <span>1. Tocá el botón <b>Compartir</b> (abajo al medio).</span>
-                             </div>
-                             <div className="flex items-center gap-3">
-                                 <div className="bg-white p-2 rounded-lg shadow-sm text-gray-600"><PlusSquare size={18}/></div>
-                                 <span>2. Buscá y elegí <b>"Agregar a Inicio"</b>.</span>
-                             </div>
-                             <div className="flex items-center gap-3">
-                                 <div className="bg-white p-2 rounded-lg shadow-sm font-bold text-blue-500 text-[10px]">Add</div>
-                                 <span>3. Dale a <b>Agregar</b> (arriba derecha).</span>
-                             </div>
-                         </div>
-                     )}
-                     <button onClick={() => setShowInstall(false)} className="text-gray-400 font-bold text-xs uppercase hover:text-gray-600 mt-2">Usar navegador por ahora</button>
-                 </div>
-             </div>
-         </div>
-      )}
-
       <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md border-t-8 border-orange-500 relative z-0">
         <div className="text-center mb-8">
             <div className="flex justify-center mb-4"><img src={getCachedAppConfig().logoUrl || '/icon-192.png'} alt="Logo institucional" className="h-24 w-auto object-contain drop-shadow-md" /></div>
@@ -728,13 +652,8 @@ function MainApp({ user, onLogout }) {
   const [globalViewingStudent, setGlobalViewingStudent] = useState(null);
   
   // POPUPS Y PWA HEADER
-  const [showNotifRequest, setShowNotifRequest] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [showMaintenanceAlert, setShowMaintenanceAlert] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-
   const prevNotifCount = useRef(0);
   const currentRole = user?.role || user?.rol || '';
   const isSuperAdmin = user?.rol === 'super-admin' || user?.rol === 'admin' || currentRole === 'super-admin' || currentRole === 'admin';
@@ -778,14 +697,6 @@ function MainApp({ user, onLogout }) {
       lastLogin: serverTimestamp() 
     }).catch(() => {});
 
-    // Capturar evento de instalación PWA para el botón del header
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      if (!isStandalone) setIsInstallable(true);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
     const unsubTasks = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), orderBy('dueDate', 'asc')), (snap) => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubEvents = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'events'), orderBy('date', 'asc')), (snap) => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubResources = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'resources'), orderBy('createdAt', 'desc')), (snap) => setResources(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -813,38 +724,10 @@ function MainApp({ user, onLogout }) {
         prevNotifCount.current = unread.length;
     });
 
-    if ("Notification" in window && Notification.permission === 'default') {
-        const timer = setTimeout(() => setShowNotifRequest(true), 5000);
-        return () => clearTimeout(timer);
-    }
-
     return () => { 
       unsubTasks(); unsubNotifs(); unsubEvents(); unsubResources(); unsubAnnounce(); unsubMaint();
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-  }, [user.id, db, appId, isStandalone]);
-
-const handleInstallApp = async () => {
-    if (deferredPrompt) {
-      // Si el navegador ya tiene guardado el evento, se descarga de forma directa
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log(`Resultado: ${outcome}`);
-      if (outcome === 'accepted') {
-        setIsInstallable(false);
-      }
-      setDeferredPrompt(null);
-    } else {
-      // Si el navegador aún no liberó el evento directo, le damos instrucciones claras según el dispositivo
-      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
-      
-      if (isIOS) {
-        alert("Para instalar en iPhone: Toca el botón 'Compartir' (abajo en el navegador) y luego 'Agregar a la pantalla de inicio'.");
-      } else {
-        alert("Para instalar la app, toca los tres puntos (menú superior derecho de tu navegador) y selecciona 'Instalar aplicación' o 'Agregar a la pantalla principal'.");
-      }
-    }
-  };
+  }, [user.id, db, appId]);
   const handleGlobalSearch = async (text) => { 
     setSearchQuery(text); 
     if (text.length < 2 || !db || !appId) { setSearchResults([]); return; } 
@@ -879,27 +762,6 @@ const handleInstallApp = async () => {
     return a; 
   };
   
-  const enableNotifications = async () => { 
-      const permission = await Notification.requestPermission(); 
-      if (permission === 'granted') { 
-          try { 
-              const { getMessaging, getToken } = await import("firebase/messaging"); 
-              const messaging = getMessaging(); 
-              const token = await getToken(messaging, { 
-                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY 
-              }); 
-              
-              if(token && db && appId) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.id), { 
-                  fcmTokens: arrayUnion(token) 
-                }); 
-              }
-          } catch(e) { console.log("FCM Error:", e); } 
-          alert("✅ ¡Genial! Te avisaremos de las novedades."); 
-      } 
-      setShowNotifRequest(false); 
-  };
-
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 font-sans text-slate-800 overflow-hidden relative">
       <header className="bg-violet-800 text-white shadow-lg px-4 py-3 flex justify-between items-center z-50 sticky top-0 shrink-0">
@@ -912,18 +774,6 @@ const handleInstallApp = async () => {
         </div>
         
         <div className="flex items-center gap-2">
-          {/* --- BOTÓN DE DESCARGAR/INSTALAR APP EN EL HEADER --- */}
-          {!isStandalone && (
-            <button 
-              onClick={handleInstallApp} 
-              title="Instalar Aplicación"
-              className="p-2 rounded-full bg-orange-500 hover:bg-orange-600 transition flex items-center gap-1.5 px-3 text-xs font-black shadow-md animate-pulse"
-            >
-              <Download size={16} />
-              <span className="hidden md:inline uppercase">Instalar App</span>
-            </button>
-          )}
-
           <button onClick={() => setShowSearch(true)} className="p-2 rounded-full bg-violet-900/50 hover:bg-orange-500 transition"><Search size={20} /></button>
           
           <div className="relative">
@@ -959,21 +809,6 @@ const handleInstallApp = async () => {
                   <button onClick={() => setShowMaintenanceAlert(false)} className="w-full bg-white text-orange-600 py-3 rounded-xl text-xs font-black uppercase">Entendido</button>
               </div>
           </div>
-      )}
-
-      {/* --- POPUP NOTIFICACIONES --- */}
-      {showNotifRequest && (
-        <div className="fixed inset-0 z-[400] flex items-end md:items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
-             <div className="bg-white rounded-[30px] p-6 w-full max-w-sm shadow-2xl text-center border-t-8 border-orange-500 mb-20 md:mb-0">
-                  <Bell size={32} className="text-orange-500 mx-auto mb-4"/>
-                  <h3 className="text-xl font-black text-gray-800">¡No te pierdas nada!</h3>
-                  <p className="text-sm text-gray-500 mb-6">Activá los avisos urgentes.</p>
-                  <div className="flex flex-col gap-3">
-                      <button onClick={enableNotifications} className="w-full bg-violet-600 text-white font-bold py-3 rounded-xl">ACTIVAR AHORA</button>
-                      <button onClick={() => setShowNotifRequest(false)} className="text-gray-400 text-xs font-bold uppercase">Ahora no</button>
-                  </div>
-             </div>
-        </div>
       )}
 
       <main className={`flex-1 overflow-y-auto no-scrollbar pb-24 pt-6 mx-auto w-full transition-all duration-300 ${isWideTab ? 'px-2 max-w-[98%]' : 'px-4 max-w-4xl'}`}>
