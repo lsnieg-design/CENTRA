@@ -41,11 +41,14 @@ const STYLE_BY_TYPE = Object.fromEntries(
   DEFAULT_EVENT_STYLES.map(([id, label, className]) => [id, { label, className }])
 );
 
-const formatMonth = (date) =>
-  date.toLocaleDateString('es-AR', {
+const formatMonth = (date) => {
+  const value = date.toLocaleDateString('es-AR', {
     month: 'long',
     year: 'numeric'
   });
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
 
 const formatLongDate = (dateString) => {
   if (!dateString) return '';
@@ -163,7 +166,7 @@ export function CalendarView({
   );
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('month');
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('centra_calendar_view') || 'month');
 
   const [selectedDayEvents, setSelectedDayEvents] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -1006,7 +1009,7 @@ export function CalendarView({
               dateStr
             )
           }
-          className={`group relative text-left border-b border-r border-slate-100 p-2 transition min-h-[96px] md:min-h-[130px] bg-white hover:bg-violet-50/40 ${
+          className={`group relative min-w-0 overflow-hidden text-left p-2 transition min-h-[96px] md:min-h-[130px] bg-white hover:bg-violet-50/40 ${
             isToday
               ? 'ring-2 ring-inset ring-violet-300 bg-violet-50/50'
               : ''
@@ -1049,7 +1052,7 @@ export function CalendarView({
                       event.id ||
                       event.title
                     }-${index}`}
-                    className="text-[9px] md:text-[10px] rounded-lg px-2 py-1.5 truncate font-semibold border"
+                    className="w-full min-w-0 text-[9px] md:text-[10px] rounded-lg px-2 py-1.5 truncate font-semibold border"
                     style={getEventStyle(
                       event.type,
                       eventTypeById
@@ -1094,7 +1097,7 @@ export function CalendarView({
   };
 
   const renderWeekGrid = () => (
-    <div className="grid grid-cols-1 md:grid-cols-7 min-w-0">
+    <div className="w-full min-w-0 grid grid-cols-1 md:grid-cols-7 gap-px bg-slate-200">
       {weekDays.map(
         date => {
           const dateStr =
@@ -1121,7 +1124,7 @@ export function CalendarView({
                   dateStr
                 )
               }
-              className={`text-left min-h-[180px] md:min-h-[520px] p-3 border-b md:border-b-0 md:border-r border-slate-200 bg-white hover:bg-violet-50/30 transition ${
+              className={`min-w-0 overflow-hidden text-left min-h-[180px] md:min-h-[520px] p-3 bg-white hover:bg-violet-50/30 transition ${
                 isToday
                   ? 'bg-violet-50/60'
                   : ''
@@ -1209,7 +1212,7 @@ export function CalendarView({
   );
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-3xl border border-slate-200 overflow-hidden animate-in fade-in select-none">
+    <div className="flex flex-col h-full w-full min-w-0 bg-white rounded-3xl border border-slate-200 overflow-hidden animate-in fade-in select-none">
       
       <div className="p-4 border-b border-slate-200 bg-white shrink-0">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1219,7 +1222,7 @@ export function CalendarView({
               Agenda institucional
             </p>
 
-            <h2 className="text-xl md:text-2xl font-black text-slate-900 capitalize">
+            <h2 className="text-xl md:text-2xl font-black text-slate-900">
               {viewMode === 'month'
                 ? formatMonth(
                     currentDate
@@ -1241,19 +1244,9 @@ export function CalendarView({
             </h2>
 
             <p className="text-xs text-slate-500 mt-1">
-              {
-                displayedEvents.length
-              }{' '}
-              evento
-              {displayedEvents.length ===
-              1
-                ? ''
-                : 's'}{' '}
-              visible
-              {displayedEvents.length ===
-              1
-                ? ''
-                : 's'}
+              {displayedEvents.length === 0
+                ? 'No hay eventos para mostrar'
+                : `${displayedEvents.length} evento${displayedEvents.length === 1 ? '' : 's'} visible${displayedEvents.length === 1 ? '' : 's'}`}
             </p>
           </div>
 
@@ -1390,63 +1383,54 @@ export function CalendarView({
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto p-3 bg-slate-50 border-b border-slate-200 no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 bg-white border-b border-slate-200 no-scrollbar">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0 mr-1">
+          Mostrar
+        </span>
+
         <button
-          onClick={() =>
-            setFilterType(
-              'TODOS'
-            )
-          }
-          className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition border ${
-            filterType ===
-            'TODOS'
-              ? 'bg-violet-600 text-white border-violet-600'
-              : 'bg-white text-slate-500 border-slate-200'
+          onClick={() => setFilterType('TODOS')}
+          className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition border ${
+            filterType === 'TODOS'
+              ? 'bg-slate-900 text-white border-slate-900'
+              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
           }`}
         >
           Todos
         </button>
 
-        {eventTypes.map(
-          type => (
+        {eventTypes.map(type => {
+          const meta = eventTypeById[type];
+          const active = filterType === type;
+
+          return (
             <button
               key={type}
-              onClick={() =>
-                setFilterType(
-                  type
-                )
-              }
-              className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition border ${
-                filterType ===
-                type
-                  ? 'bg-violet-50 text-violet-700 border-violet-200'
-                  : 'bg-white text-slate-500 border-slate-200'
+              onClick={() => setFilterType(type)}
+              className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition border flex items-center gap-1.5 ${
+                active
+                  ? 'bg-white shadow-sm'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
               }`}
               style={
-                filterType ===
-                type
+                active
                   ? {
-                      borderColor:
-                        eventTypeById[
-                          type
-                        ]?.color,
-                      color:
-                        eventTypeById[
-                          type
-                        ]?.color
+                      borderColor: meta?.color || '#64748b',
+                      color: meta?.color || '#64748b'
                     }
                   : undefined
               }
             >
-              {
-                getEventLabel(
-                  type,
-                  eventTypeById
-                )
-              }
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{
+                  backgroundColor: meta?.color || '#64748b'
+                }}
+              />
+              {getEventLabel(type, eventTypeById)}
             </button>
-          )
-        )}
+          );
+        })}
       </div>
 
       {showQuickLoad &&
@@ -1516,7 +1500,7 @@ export function CalendarView({
       {viewMode ===
         'month' ? (
         <>
-          <div className="grid grid-cols-7 bg-white border-b border-slate-200 shrink-0">
+          <div className="w-full min-w-0 grid grid-cols-7 bg-white border-b border-slate-200 shrink-0">
             {[
               'Lun',
               'Mar',
@@ -1528,7 +1512,7 @@ export function CalendarView({
             ].map(day => (
               <div
                 key={day}
-                className="py-2.5 text-center text-[9px] md:text-xs font-black text-slate-400 uppercase tracking-widest"
+                className="min-w-0 py-3 text-center text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest"
               >
                 {day}
               </div>
@@ -1536,7 +1520,7 @@ export function CalendarView({
           </div>
 
           <div
-            className="flex-1 overflow-y-auto bg-slate-100/50 no-scrollbar"
+            className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-100/50 no-scrollbar"
             onTouchStart={
               handleTouchStart
             }
@@ -1551,7 +1535,7 @@ export function CalendarView({
                 '520px'
             }}
           >
-            <div className="grid grid-cols-7">
+            <div className="w-full min-w-0 grid grid-cols-7 gap-px bg-slate-200">
               {
                 renderMonthGrid()
               }
@@ -1560,7 +1544,7 @@ export function CalendarView({
         </>
       ) : (
         <div
-          className="flex-1 overflow-y-auto bg-slate-100/50 no-scrollbar"
+          className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-100/50 no-scrollbar"
           onTouchStart={
             handleTouchStart
           }
